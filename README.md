@@ -67,6 +67,8 @@ Closing the window keeps Command Centre running in the system tray. It starts wi
 
 The phone and tablet version is the same app, hosted free at **https://01im.github.io/command-centre/**.
 
+**One-time, on the laptop:** on GitHub open this repository → **Settings → Pages** → under *Build and deployment* set **Source: Deploy from a branch**, branch **gh-pages**, folder **/ (root)** → **Save**. After about a minute the link above works. It updates automatically whenever the app changes.
+
 1. On the iPhone or iPad, open that link in **Safari**.
 2. Tap **Share** (the square with the arrow) → **Add to Home Screen** → **Add**.
 3. Open **Command** from the home screen. It runs full-screen like a normal app and works offline.
