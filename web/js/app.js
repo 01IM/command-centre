@@ -2,7 +2,8 @@ import * as S from './store.js';
 import { getPrayerSchedule, getWeather, wmo, loc, DEFAULT_SEASONS, DEFAULT_LOCATION } from './services.js';
 import * as I from './integrations.js';
 import { disconnect } from './oauth.js';
-import { isApp, openExternal } from './net.js';
+import { isApp, openExternal, joinMeeting } from './net.js';
+import { wxIcon, moonInfo, moonSVG, clockFace, zoneTime } from './visuals.js';
 import { mountCube } from './cube.js';
 
 const ICON_PATHS = {
@@ -16,6 +17,7 @@ const ICON_PATHS = {
   notes: 'M4 20h4L19 9l-4-4L4 16z M14 6l4 4',
   settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0 0 19 12z',
   more: 'M5 12h.01 M12 12h.01 M19 12h.01',
+  weather: 'M7 18h10a4 4 0 0 0 .5-7.97A6 6 0 0 0 6.1 11 3.5 3.5 0 0 0 7 18z',
 };
 const icon = (k) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON_PATHS[k]}"/></svg>`;
 
@@ -26,11 +28,14 @@ const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const TZ = undefined; // use device time zone
 
 // ---------- formatting ----------
-const fmtTime = (d) => new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: TZ });
-const fmtDate = (d, opts = { day: 'numeric', month: 'short', year: 'numeric' }) => new Date(d).toLocaleDateString('en-GB', { ...opts, timeZone: TZ });
-const fmtDay = (d) => new Date(d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-const startOfDay = (d = new Date()) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
-const daysUntil = (d) => Math.round((startOfDay(new Date(d)) - startOfDay()) / 86400000);
+// 'YYYY-MM-DD' strings are calendar dates in local time (new Date('2026-11-10') would be UTC midnight).
+const D = (d) => (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) ? new Date(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)) : new Date(d));
+const fmtTime = (d) => D(d).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: TZ }).replace(/\s?([AP])M/, (_, x) => ' ' + x.toLowerCase() + 'm');
+const fmtDate = (d, opts = { day: 'numeric', month: 'short', year: 'numeric' }) => D(d).toLocaleDateString('en-GB', { ...opts, timeZone: TZ });
+const fmtDay = (d) => D(d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+const startOfDay = (d = new Date()) => { const x = D(d); x.setHours(0, 0, 0, 0); return x; };
+const daysUntil = (d) => Math.round((startOfDay(d) - startOfDay()) / 86400000);
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const sameDay = (a, b) => startOfDay(a).getTime() === startOfDay(b).getTime();
 function countdown(ms) {
   if (ms <= 0) return 'now';
@@ -95,10 +100,13 @@ function confirmInline(form) {
 
 // ---------- navigation ----------
 const VIEWS = [
-  ['home', 'Home'], ['schedule', 'Schedule'], ['tasks', 'To-do'], ['goals', 'Goals'],
+  ['home', 'Home'], ['schedule', 'Calendar'], ['tasks', 'To-do'], ['weather', 'Weather'], ['goals', 'Goals'],
   ['documents', 'Documents'], ['travel', 'Travel'], ['health', 'Sleep & HR'], ['notes', 'Notes'], ['settings', 'Settings'],
 ];
 const MOBILE_TABS = ['home', 'schedule', 'tasks', 'documents', 'more'];
+const WORLD = [['London', 'Europe/London'], ['New York', 'America/New_York'], ['Karachi', 'Asia/Karachi']];
+const calView = { y: new Date().getFullYear(), m: new Date().getMonth(), sel: null };
+const fmt24 = (d) => { const x = D(d); return String(x.getHours()).padStart(2, '0') + String(x.getMinutes()).padStart(2, '0'); };
 let current = 'home';
 
 function renderNav() {
@@ -114,16 +122,41 @@ function route() {
   const id = (location.hash || '#home').slice(1);
   current = id === 'more' || VIEWS.some((v) => v[0] === id) ? id : 'home';
   renderNav();
-  render();
-  window.scrollTo(0, 0);
+  doRender(true);
+  window.scrollTo({ top: 0 });
 }
 
-async function render() {
-  const main = $('#main');
-  const fn = VIEW_RENDER[current];
-  main.innerHTML = await fn();
-  bindView(main);
+// Re-rendering is batched (one per frame) and postponed while you're typing in a field or
+// have a form open, so background updates never wipe what you're writing.
+let renderQueued = false, rendering = false, pendingAfter = false;
+function render() {
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => { renderQueued = false; doRender(false); });
 }
+function isBusy() {
+  const a = document.activeElement;
+  if ($('#modal')?.open) return true;
+  return !!(a && $('#main').contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && (a.value || a.type === 'date'));
+}
+async function doRender(entering) {
+  if (!entering && isBusy()) { pendingAfter = true; return; }
+  if (rendering) { pendingAfter = true; return; }
+  rendering = true;
+  try {
+    const main = $('#main');
+    const html = await VIEW_RENDER[current]();
+    main.classList.toggle('enter', entering);
+    main.innerHTML = html;
+    if (entering) { void main.offsetWidth; requestAnimationFrame(() => main.classList.remove('enter')); }
+    bindView(main);
+    liveUpdate();
+  } finally {
+    rendering = false;
+    if (pendingAfter && !isBusy()) { pendingAfter = false; render(); }
+  }
+}
+document.addEventListener('focusout', () => setTimeout(() => { if (pendingAfter && !isBusy()) { pendingAfter = false; render(); } }, 50));
 
 // ---------- shared data getters ----------
 const cache = { calendar: null, todo: null, health: null, weather: null, prayer: null };
@@ -176,7 +209,7 @@ async function meetingsBlock({ days = 1, max = 6 } = {}) {
     return `<li class="${live ? 'live' : ''}">
       <div class="when">${e.allDay ? 'All day' : fmtTime(e.start)}${days > 1 ? `<small>${fmtDay(e.start)}</small>` : ''}</div>
       <div class="what"><b>${esc(e.title)}</b><small>${e.platform ? `<span class="pill ${e.platform.toLowerCase()}">${e.platform}</span>` : ''}${esc(e.calendar || '')}</small></div>
-      ${e.join ? `<a class="btn ${live || soon ? 'primary' : 'ghost'} sm" href="${esc(e.join)}" target="_blank" rel="noopener">${live ? 'Join now' : 'Join'}</a>` : ''}
+      ${e.join ? `<button class="btn ${live || soon ? 'primary' : 'ghost'} sm" data-join="${esc(e.join)}">${live ? 'Join now' : 'Join'}</button>` : ''}
     </li>`;
   }).join('')}</ul>`;
 }
@@ -203,25 +236,47 @@ function prayerBlock() {
   if (!p) return empty('Loading prayer times…');
   if (p.error) return empty('Prayer times will appear once online.');
   return `<div class="prayer-next"><span>Next: <b>${p.next.name}</b> at ${fmtTime(p.next.time)}</span><strong data-countdown="${p.next.time.getTime()}">${countdown(p.next.time - Date.now())}</strong></div>
-    <ul class="prayers">${p.list.map((x) => `<li class="${x.name === p.next.name && sameDay(x.time, p.next.time) ? 'next' : x.time < new Date() ? 'past' : ''}"><span>${x.name}</span><b>${fmtTime(x.time)}</b></li>`).join('')}</ul>
+    <ul class="prayers">${p.list.map((x) => { const [t, ap] = fmtTime(x.time).split(' '); return `<li class="${x.name === p.next.name && sameDay(x.time, p.next.time) ? 'next' : x.time < new Date() ? 'past' : ''}"><span>${x.name}</span><b>${t}<i>${ap}</i></b></li>`; }).join('')}</ul>
     <small class="muted">${esc(p.hijri)} · ${esc(loc().name)}</small>`;
 }
 
-function weatherBlock() {
+function weatherBlock({ detail = false } = {}) {
   const w = cache.weather;
-  if (!w) return empty('Loading weather…');
+  if (!w) return `<div class="skeleton" style="height:150px"></div>`;
   if (w.error) return empty('Weather will appear once online.');
-  const [desc, icon] = wmo(w.current.weather_code);
-  return `<div class="wx-now"><span class="wx-icon">${icon}</span><div><strong>${Math.round(w.current.temperature_2m)}°C</strong><small>${desc} · feels ${Math.round(w.current.apparent_temperature)}°C</small><small>Humidity ${w.current.relative_humidity_2m}% · Wind ${Math.round(w.current.wind_speed_10m)} km/h</small></div></div>
-    <ul class="wx-days">${w.daily.time.map((d, i) => `<li><span>${i === 0 ? 'Today' : new Date(d).toLocaleDateString('en-GB', { weekday: 'short' })}</span><i>${wmo(w.daily.weather_code[i])[1]}</i><b>${Math.round(w.daily.temperature_2m_max[i])}°</b><small>${Math.round(w.daily.temperature_2m_min[i])}°</small></li>`).join('')}</ul>
-    ${w.stale ? '<small class="muted">Offline — showing last update</small>' : ''}`;
+  const c = w.current;
+  const [desc] = wmo(c.weather_code);
+  const moon = moonInfo();
+  const days = w.daily.time.map((d, i) => ({ d, code: w.daily.weather_code[i], max: w.daily.temperature_2m_max[i], min: w.daily.temperature_2m_min[i], rain: w.daily.precipitation_probability_max?.[i] }));
+  const lo = Math.min(...days.map((x) => x.min)), hi = Math.max(...days.map((x) => x.max));
+  const range = (x) => `left:${((x.min - lo) / (hi - lo || 1)) * 100}%;right:${100 - ((x.max - lo) / (hi - lo || 1)) * 100}%`;
+  const sunrise = w.daily.sunrise?.[0], sunset = w.daily.sunset?.[0];
+  let html = `<div class="wx-top">
+      <div class="wx-now">${wxIcon(c.weather_code, !!c.is_day, 72)}<div><strong>${Math.round(c.temperature_2m)}°C</strong><small>${desc} · feels ${Math.round(c.apparent_temperature)}°</small><small>Humidity ${c.relative_humidity_2m}% · Wind ${Math.round(c.wind_speed_10m)} km/h</small></div></div>
+      <div class="wx-moon" title="${esc(moon.name)}">${moonSVG(moon.phase, 52)}<div><b>${moon.name}</b><small>${Math.round(moon.illum * 100)}% lit</small><small>Full ${fmtDate(moon.nextFull, { day: 'numeric', month: 'short' })} · New ${fmtDate(moon.nextNew, { day: 'numeric', month: 'short' })}</small></div></div>
+    </div>
+    ${sunrise ? `<div class="wx-sunline"><small>Sunrise ${fmtTime(sunrise)}</small><small>Sunset ${fmtTime(sunset)}</small></div>` : ''}
+    <ul class="wx-week">${days.map((x, i) => `<li><span>${i === 0 ? 'Today' : D(x.d).toLocaleDateString('en-GB', { weekday: 'short' })}</span>${wxIcon(x.code, true, 30)}<small class="rain">${x.rain != null && x.rain >= 10 ? x.rain + '%' : ''}</small><em>${Math.round(x.min)}°</em><div class="trange"><i style="${range(x)}"></i></div><b>${Math.round(x.max)}°</b></li>`).join('')}</ul>`;
+  if (detail && w.hourly) {
+    const now = Date.now();
+    const idx = w.hourly.time.findIndex((t) => new Date(t).getTime() > now - 3600000);
+    const hrs = w.hourly.time.slice(idx, idx + 24).map((t, i) => ({ t, temp: w.hourly.temperature_2m[idx + i], code: w.hourly.weather_code[idx + i], day: w.hourly.is_day?.[idx + i], rain: w.hourly.precipitation_probability?.[idx + i] }));
+    const tmin = Math.min(...hrs.map((h) => h.temp)) - 1, tmax = Math.max(...hrs.map((h) => h.temp)) + 1;
+    const W = 960, H = 120, step = W / (hrs.length - 1);
+    const pts = hrs.map((h, i) => [i * step, H - ((h.temp - tmin) / (tmax - tmin)) * (H - 20) - 10]);
+    const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join('');
+    html += `<h3 class="sub">Next 24 hours</h3><div class="hourly"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" class="hourly-chart"><defs><linearGradient id="tg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".35"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs><path d="${line}L${W},${H}L0,${H}Z" fill="url(#tg)"/><path d="${line}" class="tline"/></svg>
+      <ul class="hours">${hrs.filter((_, i) => i % 2 === 0).map((h) => `<li><small>${fmtTime(h.t).replace(':00', '')}</small>${wxIcon(h.code, !!h.day, 26)}<b>${Math.round(h.temp)}°</b>${h.rain >= 20 ? `<small class="rain">${h.rain}%</small>` : '<small>&nbsp;</small>'}</li>`).join('')}</ul></div>`;
+  }
+  html += w.stale ? '<small class="muted">Offline — showing last update</small>' : '<small class="muted src">Forecast: Open-Meteo</small>';
+  return html;
 }
 
 const PLAN_ICONS = new Proxy({}, { get: (_, k) => `<i class="dot ${String(k)}"></i>` });
 function plansBlock({ max = 4 } = {}) {
   const items = list('plans').filter((p) => new Date(p.end || p.date) >= startOfDay()).sort((a, b) => new Date(a.date) - new Date(b.date)).slice(0, max);
   if (!items.length) return empty('No plans yet.', ' <button class="link" data-add="plan">Add one</button>');
-  return `<ul class="plans">${items.map((p) => `<li data-edit-plan="${p.id}"><span class="ic">${PLAN_ICONS[p.type || 'other']}</span><div><b>${esc(p.title)}</b><small>${fmtDay(p.date)}${p.time ? ' · ' + esc(p.time) : ''}${p.end && p.end !== p.date ? ' → ' + fmtDay(p.end) : ''}${p.where ? ' · ' + esc(p.where) : ''}</small></div><small class="rel">${relDays(daysUntil(p.date))}</small></li>`).join('')}</ul>`;
+  return `<ul class="plans">${items.map((p) => `<li data-edit-plan="${p.id}"><span class="ic">${PLAN_ICONS[p.type || 'other']}</span><div><b>${esc(p.title)}</b><small>${fmtDay(p.date)}${p.time ? ' · ' + fmtTime(new Date(p.date + 'T' + p.time)) : ''}${p.end && p.end !== p.date ? ' → ' + fmtDay(p.end) : ''}${p.where ? ' · ' + esc(p.where) : ''}</small></div><small class="rel">${relDays(daysUntil(p.date))}</small></li>`).join('')}</ul>`;
 }
 
 function docsAlertBlock() {
@@ -270,7 +325,7 @@ async function healthBlock({ detail = false } = {}) {
   let html = `<div class="stats">
     <div><small>Last night</small><strong>${last ? minsToHM(last.minutes) : '—'}</strong><small>${last ? `${fmtTime(last.start)} → ${fmtTime(last.end)}` : h.sleepError ? 'Not available' : 'No data'}</small></div>
     <div><small>7-night avg</small><strong>${minsToHM(avg)}</strong><small>${h.sleep?.length || 0} nights</small></div>
-    <div><small>Resting HR</small><strong>${rest ? rest.bpm + ' <em>bpm</em>' : '—'}</strong><small>${rest?.date || ''}</small></div>
+    <div><small>Resting HR</small><strong>${rest ? rest.bpm + ' <em>bpm</em>' : '—'}</strong><small>${rest?.date ? fmtDate(rest.date, { weekday: 'short', day: 'numeric', month: 'short' }) : ''}</small></div>
     <div><small>Latest HR</small><strong>${latest ? latest.bpm + ' <em>bpm</em>' : '—'}</strong><small>${latest ? fmtTime(latest.t) : h.hrError ? 'Not available' : ''}</small></div>
   </div>`;
   if (hrs.length > 1) html += `<div class="spark-wrap">${sparkline(hrs)}<small>24 h heart rate · ${min}–${max} bpm</small></div>`;
@@ -287,12 +342,14 @@ const VIEW_RENDER = {
     const now = new Date();
     const hr = now.getHours();
     const greet = hr < 5 ? 'Good night' : hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
-    return `<div class="hero"><div><h1>${greet}, Imran</h1><p data-clock-date>${now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p></div><div class="clock" data-clock>${fmtTime(now)}</div></div>
+    return `<div class="hero"><div><h1>${greet}, Imran</h1><p data-clock-date>${now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p></div>
+      <div class="clocks"><div class="clock-main"><span class="clock" data-clock>${fmtTime(now)}</span><small>Kuwait</small></div>
+      <ul class="world">${WORLD.map(([city, tz]) => `<li data-zone="${tz}">${clockFace(38)}<div><b data-zone-text>${zoneTime(tz, now).text}</b><small>${city}<em data-zone-day></em></small></div></li>`).join('')}</ul></div></div>
     <div class="grid home-grid">
       ${card('Meetings today', await meetingsBlock(), { link: 'schedule', cls: 'span2', action: '<button class="icon-btn" data-refresh="calendar" title="Refresh">↻</button>' })}
       ${card('Prayer times', prayerBlock(), { cls: 'prayer' })}
       ${card('To-do', await todoBlock(), { link: 'tasks', action: '<button class="icon-btn" data-refresh="todo" title="Refresh">↻</button>' })}
-      ${card('Weather', weatherBlock())}
+      ${card('Weather', weatherBlock(), { link: 'weather', cls: 'weather-card', action: '<button class="icon-btn" data-refresh="weather" title="Refresh">↻</button>' })}
       ${card('Plans', plansBlock(), { link: 'schedule', action: '<button class="icon-btn" data-add="plan" title="Add plan">+</button>' })}
       ${card('Document expiry', docsAlertBlock(), { link: 'documents' })}
       ${card('Sleep & heart rate', await healthBlock(), { link: 'health', action: '<button class="icon-btn" data-refresh="health" title="Refresh">↻</button>' })}
@@ -303,20 +360,54 @@ const VIEW_RENDER = {
   },
 
   async schedule() {
-    const evs = cache.calendar?.events || [];
-    const plans = list('plans').filter((p) => new Date(p.end || p.date) >= startOfDay());
-    const all = [
-      ...evs.filter((e) => new Date(e.end) >= new Date()).map((e) => ({ kind: 'meeting', date: new Date(e.start), e })),
-      ...plans.map((p) => ({ kind: 'plan', date: new Date(p.date + (p.time ? 'T' + p.time : 'T00:00')), p })),
-    ].sort((a, b) => a.date - b.date);
+    const view = calView;
+    const first = new Date(view.y, view.m, 1);
+    const gridStart = new Date(first); gridStart.setDate(1 - ((first.getDay() + 6) % 7)); // weeks start Monday
+    const gridEnd = new Date(gridStart); gridEnd.setDate(gridStart.getDate() + 42);
+    const evs = I.eventsBetween(await kvGet('cache:ics', []), gridStart, gridEnd);
+    const plans = list('plans');
     const byDay = new Map();
-    for (const it of all) { const k = startOfDay(it.date).toISOString(); if (!byDay.has(k)) byDay.set(k, []); byDay.get(k).push(it); }
-    const body = byDay.size ? [...byDay.entries()].map(([k, items]) => `<div class="day"><h3>${fmtDay(k)} <small>${relDays(daysUntil(k))}</small></h3><ul class="events">${items.map((it) => it.kind === 'meeting'
-      ? `<li><div class="when">${it.e.allDay ? 'All day' : fmtTime(it.e.start)}</div><div class="what"><b>${esc(it.e.title)}</b><small>${it.e.platform ? `<span class="pill ${it.e.platform.toLowerCase()}">${it.e.platform}</span>` : ''}${esc(it.e.calendar || '')}${it.e.location && !it.e.join ? ' · ' + esc(it.e.location) : ''}</small></div>${it.e.join ? `<a class="btn ghost sm" href="${esc(it.e.join)}" target="_blank" rel="noopener">Join</a>` : ''}</li>`
-      : `<li class="plan" data-edit-plan="${it.p.id}"><div class="when">${it.p.time ? esc(it.p.time) : PLAN_ICONS[it.p.type || 'other']}</div><div class="what"><b>${esc(it.p.title)}</b><small><span class="pill plan">${esc(it.p.type)}</span>${it.p.where ? esc(it.p.where) : ''}${it.p.end && it.p.end !== it.p.date ? ' · until ' + fmtDay(it.p.end) : ''}</small></div></li>`).join('')}</ul></div>`).join('') : empty('Nothing in the next two weeks.');
-    return `<div class="page-head"><h1>Schedule</h1><div class="actions"><button class="btn ghost" data-refresh="calendar">↻ Refresh</button><button class="btn primary" data-add="plan">+ Add plan</button></div></div>
-      ${!state.settings.calendarLinks ? card('Meetings', `<div class="connect"><p>Add your Google Calendar's private link in Settings to see meetings here.</p><a class="btn primary sm" href="#settings">Settings</a></div>`) : ''}
-      <section class="card">${body}</section>`;
+    const add = (key, item) => { if (!byDay.has(key)) byDay.set(key, []); byDay.get(key).push(item); };
+    for (const e of evs) {
+      const s0 = startOfDay(e.start), e0 = new Date(e.end);
+      for (let d = new Date(s0); d < e0 || ymd(d) === ymd(s0); d.setDate(d.getDate() + 1)) { add(ymd(d), { kind: 'meeting', e }); if (!e.allDay) break; if (d > gridEnd) break; }
+    }
+    for (const p of plans) {
+      const s0 = D(p.date), e0 = D(p.end || p.date);
+      for (let d = new Date(s0); d <= e0 && d < gridEnd; d.setDate(d.getDate() + 1)) add(ymd(d), { kind: 'plan', p });
+    }
+    const order = (x) => (x.kind === 'plan' ? (x.p.time ? '1' + x.p.time : '0') : x.e.allDay ? '0' : '1' + fmt24(x.e.start));
+    for (const arr of byDay.values()) arr.sort((a, b) => order(a).localeCompare(order(b)));
+    const todayKey = ymd(new Date());
+    const sel = view.sel || todayKey;
+    const cells = [];
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(gridStart); d.setDate(gridStart.getDate() + i);
+      const key = ymd(d); const items = byDay.get(key) || [];
+      const chips = items.slice(0, 3).map((x) => x.kind === 'meeting'
+        ? `<span class="chip-ev ${x.e.allDay ? 'allday' : ''} ${x.e.platform ? 'has-join' : ''}">${x.e.allDay ? '' : `<i>${fmtTime(x.e.start).replace(':00', '')}</i>`}${esc(x.e.title)}</span>`
+        : `<span class="chip-ev plan ${esc(x.p.type || 'other')}">${x.p.time ? `<i>${fmtTime(new Date(x.p.date + 'T' + x.p.time)).replace(':00', '')}</i>` : ''}${esc(x.p.title)}</span>`).join('');
+      cells.push(`<button class="cal-cell ${d.getMonth() !== view.m ? 'out' : ''} ${key === todayKey ? 'today' : ''} ${key === sel ? 'sel' : ''} ${d.getDay() === 5 || d.getDay() === 6 ? 'wknd' : ''}" data-day="${key}">
+        <span class="dnum">${d.getDate()}</span><div class="chips">${chips}${items.length > 3 ? `<span class="more-ev">+${items.length - 3} more</span>` : ''}</div></button>`);
+    }
+    const selItems = byDay.get(sel) || [];
+    const agenda = selItems.length ? `<ul class="events">${selItems.map((x) => x.kind === 'meeting'
+      ? `<li><div class="when">${x.e.allDay ? 'All day' : fmtTime(x.e.start)}</div><div class="what"><b>${esc(x.e.title)}</b><small>${x.e.platform ? `<span class="pill ${x.e.platform.toLowerCase()}">${x.e.platform}</span>` : ''}${x.e.allDay ? '' : 'until ' + fmtTime(x.e.end)}${x.e.location && !x.e.join ? ' · ' + esc(x.e.location) : ''}</small></div>${x.e.join ? `<button class="btn ghost sm" data-join="${esc(x.e.join)}">Join</button>` : ''}</li>`
+      : `<li class="plan" data-edit-plan="${x.p.id}"><div class="when">${x.p.time ? fmtTime(new Date(x.p.date + 'T' + x.p.time)) : PLAN_ICONS[x.p.type || 'other']}</div><div class="what"><b>${esc(x.p.title)}</b><small><span class="pill plan">${esc(x.p.type || 'other')}</span>${x.p.where ? esc(x.p.where) : ''}${x.p.end && x.p.end !== x.p.date ? ' · until ' + fmtDay(x.p.end) : ''}</small></div></li>`).join('')}</ul>` : empty('Nothing on this day.');
+    const monthName = first.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    return `<div class="page-head"><h1>${monthName}</h1><div class="actions">
+        <div class="seg"><button class="btn ghost" data-cal="-1" aria-label="Previous month">‹</button><button class="btn ghost" data-cal="0">Today</button><button class="btn ghost" data-cal="1" aria-label="Next month">›</button></div>
+        <button class="btn ghost" data-refresh="calendar" title="Refresh">↻</button><button class="btn primary" data-add="plan" data-date="${sel}">+ Add plan</button></div></div>
+      ${!state.settings.calendarLinks ? `<section class="card banner"><div class="connect"><p>Add your Google Calendar's private link in Settings to see your meetings in this calendar.</p><a class="btn primary sm" href="#settings">Settings</a></div></section>` : ''}
+      <div class="cal-layout">
+        <section class="card cal"><div class="cal-head">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => `<span>${d}</span>`).join('')}</div><div class="cal-grid">${cells.join('')}</div></section>
+        <section class="card agenda"><header><h2>${sel === todayKey ? 'Today' : fmtDay(sel)}</h2><small>${relDays(daysUntil(sel))}</small></header>${agenda}</section>
+      </div>`;
+  },
+
+  async weather() {
+    return `<div class="page-head"><h1>Weather</h1><div class="actions"><button class="btn ghost" data-refresh="weather">↻ Refresh</button></div></div>
+      <section class="card weather-card big">${weatherBlock({ detail: true })}</section>`;
   },
 
   async tasks() {
@@ -474,7 +565,8 @@ function goalForm(g = {}) {
 
 async function compressImage(file, maxDim = 1800) {
   if (!file.type.startsWith('image/')) return file; // PDFs etc. stored as-is
-  const img = await createImageBitmap(file);
+  let img;
+  try { img = await createImageBitmap(file); } catch { return file; } // e.g. HEIC: keep the original
   const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
   const c = document.createElement('canvas');
   c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
@@ -583,7 +675,7 @@ function bindView(root) {
   root.onclick = async (e) => {
     const ext = e.target.closest('a[target=_blank]');
     if (ext && isApp()) { e.preventDefault(); return openExternal(ext.href); }
-    const t = e.target.closest('button, [data-edit-plan], [data-edit-doc], [data-edit-trip], [data-edit-season]');
+    const t = e.target.closest('button, [data-edit-plan], [data-edit-doc], [data-edit-trip], [data-edit-season], [data-day]');
     if (!t) return;
     const ds = t.dataset;
     try {
@@ -598,7 +690,10 @@ function bindView(root) {
       if (ds.undo) { const lt = list('localTasks').find((x) => x.id === ds.undo); return upsert('localTasks', { ...lt, done: false }); }
       if (ds.editTask) { const lt = list('localTasks').find((x) => x.id === ds.editTask); return taskForm(lt); }
       if (ds.refresh) { t.classList.add('spin'); await refresh(ds.refresh, true); t.classList.remove('spin'); return; }
-      if (ds.add === 'plan') return planForm();
+      if (ds.join) return joinMeeting(ds.join);
+      if (ds.cal !== undefined) { const n = +ds.cal; if (n === 0) { const t = new Date(); calView.y = t.getFullYear(); calView.m = t.getMonth(); calView.sel = null; } else { const d = new Date(calView.y, calView.m + n, 1); calView.y = d.getFullYear(); calView.m = d.getMonth(); } return doRender(true); }
+      if (ds.day) { calView.sel = ds.day; const d = D(ds.day); if (d.getMonth() !== calView.m) { calView.y = d.getFullYear(); calView.m = d.getMonth(); return doRender(true); } return render(); }
+      if (ds.add === 'plan') return planForm(ds.date ? { date: ds.date } : {});
       if (ds.add === 'goal') return goalForm();
       if (ds.add === 'doc') return docForm();
       if (ds.add === 'trip') return tripForm();
@@ -650,6 +745,8 @@ function bindView(root) {
     const form = e.target; const kind = form.dataset.form; if (!kind) return;
     e.preventDefault();
     const v = Object.fromEntries(new FormData(form).entries());
+    // quick-entry forms: clear and release focus straight away so the list refreshes immediately
+    if (['todo', 'quicknote', 'checkpoint'].includes(kind)) { form.reset(); document.activeElement?.blur(); }
     try {
       if (kind === 'todo') {
         if (!v.title.trim()) return;
@@ -693,8 +790,10 @@ async function refresh(what, manual = false) {
   try {
     if (what === 'calendar') {
       if (!state.settings.calendarLinks) return;
+      const before = JSON.stringify(cache.calendar?.events || []);
       try { await I.syncCalendar(); cache.calendarError = null; } catch (e) { cache.calendarError = navigator.onLine ? e.message : null; throw e; }
       cache.calendar = await kvGet('cache:calendar');
+      if (!manual && current !== 'schedule' && before === JSON.stringify(cache.calendar.events)) { LAST[what] = Date.now(); return; }
     }
     if (what === 'todo') { if (await I.connectionStatus('microsoft') === 'disconnected') return; await I.syncTodo(); cache.todo = await kvGet('cache:todo'); }
     if (what === 'health') { if (await I.connectionStatus('google') === 'disconnected') return; await I.syncHealth(); cache.health = await kvGet('cache:health'); }
@@ -710,10 +809,12 @@ async function refresh(what, manual = false) {
   render();
 }
 
-const EVERY = { calendar: 10, todo: 15, weather: 30, prayer: 60, health: 60 }; // minutes
+const EVERY = { calendar: 1, todo: 5, weather: 30, prayer: 60, health: 60 }; // minutes
+const HIDDEN_EVERY = { calendar: 5 }; // slower while the window is hidden in the tray
 async function tick() {
   for (const [what, mins] of Object.entries(EVERY)) {
-    if (!LAST[what] || Date.now() - LAST[what] > mins * 60000) await refresh(what);
+    const m = document.hidden && HIDDEN_EVERY[what] ? HIDDEN_EVERY[what] : mins;
+    if (!LAST[what] || Date.now() - LAST[what] > m * 60000 - 2000) await refresh(what);
   }
   checkNotifications();
 }
@@ -734,7 +835,7 @@ function checkNotifications() {
     for (const e of cache.calendar?.events || []) {
       if (e.allDay) continue;
       const diff = new Date(e.start) - now;
-      if (diff > 0 && diff <= 10 * 60000) notify('ev:' + e.id + e.start, `${e.title} in ${Math.ceil(diff / 60000)} min`, e.platform ? `${e.platform} — open the dashboard to join` : e.location || '');
+      if (diff > 0 && diff <= 10 * 60000) notify('ev:' + e.id + e.start, `${e.title} in ${Math.ceil(diff / 60000)} min`, e.platform ? `${e.platform} — open Command Centre and press Join` : e.location || '');
     }
   }
   if (state.settings.notifyPrayer && cache.prayer?.list) {
@@ -753,11 +854,20 @@ function checkNotifications() {
 }
 
 // ---------- live clock / countdowns (no re-render) ----------
+let prayerRefreshing = false;
 function liveUpdate() {
   const now = new Date();
-  $$('[data-clock]').forEach((el) => (el.textContent = fmtTime(now)));
+  $$('[data-clock]').forEach((el) => { const t = fmtTime(now); if (el.textContent !== t) el.textContent = t; });
   $$('[data-countdown]').forEach((el) => (el.textContent = countdown(+el.dataset.countdown - now)));
-  if (cache.prayer?.next && now > cache.prayer.next.time) refresh('prayer');
+  $$('[data-zone]').forEach((li) => {
+    const z = zoneTime(li.dataset.zone, now);
+    const txt = li.querySelector('[data-zone-text]'); if (txt.textContent !== z.text) txt.textContent = z.text;
+    li.querySelector('[data-zone-day]').textContent = z.dayDiff ? ' · ' + z.dayDiff : '';
+    li.querySelector('.hand.h').style.transform = `rotate(${(z.h % 12) * 30 + z.m * 0.5}deg)`;
+    li.querySelector('.hand.m').style.transform = `rotate(${z.m * 6}deg)`;
+    li.classList.toggle('night', z.h < 6 || z.h >= 19);
+  });
+  if (!prayerRefreshing && cache.prayer?.next && now > cache.prayer.next.time) { prayerRefreshing = true; refresh('prayer').finally(() => { prayerRefreshing = false; }); }
 }
 
 // ---------- startup ----------
@@ -776,7 +886,8 @@ async function start() {
   tick();
   setInterval(tick, 60_000);
   setInterval(liveUpdate, 1000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { LAST.calendar = 0; tick(); } });
+  addEventListener('focus', () => { if (Date.now() - (LAST.calendar || 0) > 20000) refresh('calendar'); });
   addEventListener('online', () => { for (const k of Object.keys(LAST)) LAST[k] = 0; tick(); });
 }
 

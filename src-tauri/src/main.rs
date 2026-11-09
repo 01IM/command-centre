@@ -3,7 +3,7 @@
 // starts with Windows, and provides three small helpers to the UI:
 //   net_request   – HTTP requests without browser CORS limits (calendar link, sign-in)
 //   oauth_listen / oauth_wait – temporary local address for Google / Microsoft sign-in
-//   open_url      – open links (Zoom, sign-in pages) in your default browser
+//   open_url      – open links in your default browser, or Zoom/Teams links in their apps
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::collections::HashMap;
@@ -125,8 +125,10 @@ async fn oauth_wait(port: u16) -> Result<String, String> {
 
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
-    if !(url.starts_with("https://") || url.starts_with("http://")) {
-        return Err("Only http(s) links can be opened".into());
+    // Web links, plus Zoom / Teams app links so "Join" opens the desktop app directly.
+    let allowed = ["https://", "http://", "zoommtg://", "zoomus://", "msteams:"];
+    if !allowed.iter().any(|p| url.starts_with(p)) {
+        return Err("This kind of link can't be opened".into());
     }
     open::that(url).map_err(|e| e.to_string())
 }

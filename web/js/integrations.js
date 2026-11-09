@@ -34,19 +34,30 @@ async function json(res) {
 
 // ---------------- Calendar (Google Calendar private iCal link — no sign-in needed) ----------------
 export async function syncCalendar() {
-  const links = (state.settings.calendarLinks || '').split(/\s+/).filter((l) => /^https?:\/\//.test(l));
+  const links = (state.settings.calendarLinks || '').split(/\s+/).filter((l) => /^(https?|webcal):\/\//.test(l));
   if (!links.length) return [];
-  const from = new Date(); from.setHours(0, 0, 0, 0);
-  const to = new Date(from); to.setDate(to.getDate() + 15);
-  const events = [];
+  const texts = [];
   for (const link of links) {
     const res = await netFetch(link.replace(/^webcal:/, 'https:'));
     if (!res.ok) throw new Error(`Calendar link returned ${res.status} — check it in Settings`);
-    events.push(...parseICS(await res.text(), { from, to }));
+    const text = await res.text();
+    if (!text.includes('BEGIN:VCALENDAR')) throw new Error('That link is not an iCal calendar — copy the “Secret address in iCal format”');
+    texts.push(text);
   }
-  events.sort((a, b) => new Date(a.start) - new Date(b.start));
+  await kvSet('cache:ics', texts);
+  const from = new Date(); from.setHours(0, 0, 0, 0);
+  const to = new Date(from); to.setDate(to.getDate() + 15);
+  const events = eventsBetween(texts, from, to);
   await kvSet('cache:calendar', { at: Date.now(), events });
   return events;
+}
+
+// Parse cached calendar text(s) for any date range (used by the month view).
+export function eventsBetween(texts, from, to) {
+  const out = [];
+  for (const t of texts || []) out.push(...parseICS(t, { from, to }));
+  const seen = new Set();
+  return out.filter((e) => (seen.has(e.id) ? false : seen.add(e.id))).sort((a, b) => new Date(a.start) - new Date(b.start));
 }
 
 // ---------------- Google Health (Fitbit Air) ----------------
