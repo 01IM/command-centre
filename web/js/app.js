@@ -5,6 +5,7 @@ import { disconnect } from './oauth.js';
 import { isApp, openExternal, joinMeeting } from './net.js';
 import { wxIcon, moonInfo, moonSVG, clockFace, zoneTime } from './visuals.js';
 import { mountCube } from './cube.js';
+import * as V from './vault.js';
 
 const ICON_PATHS = {
   home: 'M3 11 12 4l9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',
@@ -17,6 +18,7 @@ const ICON_PATHS = {
   notes: 'M4 20h4L19 9l-4-4L4 16z M14 6l4 4',
   settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0 0 19 12z',
   more: 'M5 12h.01 M12 12h.01 M19 12h.01',
+  files: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
   weather: 'M7 18h10a4 4 0 0 0 .5-7.97A6 6 0 0 0 6.1 11 3.5 3.5 0 0 0 7 18z',
 };
 const icon = (k) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON_PATHS[k]}"/></svg>`;
@@ -101,9 +103,14 @@ function confirmInline(form) {
 // ---------- navigation ----------
 const VIEWS = [
   ['home', 'Home'], ['schedule', 'Calendar'], ['tasks', 'To-do'], ['weather', 'Weather'], ['goals', 'Goals'],
-  ['documents', 'Documents'], ['travel', 'Travel'], ['health', 'Sleep & HR'], ['notes', 'Notes'], ['settings', 'Settings'],
+  ['files', 'Files'], ['documents', 'Expiry dates'], ['travel', 'Travel'], ['health', 'Sleep & HR'], ['notes', 'Notes'], ['settings', 'Settings'],
 ];
-const MOBILE_TABS = ['home', 'schedule', 'tasks', 'documents', 'more'];
+const MOBILE_TABS = ['home', 'schedule', 'tasks', 'files', 'more'];
+const people = () => (state.settings.people?.length ? state.settings.people : ['Imran']);
+const filesView = { person: null, category: 'All', q: '' };
+let docsPerson = 'All';
+const travelView = { tab: 'trips' };
+const fmtSize = (b) => b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(0) + ' KB' : (b / 1048576).toFixed(1) + ' MB';
 const WORLD = [['London', 'Europe/London'], ['New York', 'America/New_York'], ['Karachi', 'Asia/Karachi']];
 const calView = { y: new Date().getFullYear(), m: new Date().getMonth(), sel: null };
 const fmt24 = (d) => { const x = D(d); return String(x.getHours()).padStart(2, '0') + String(x.getMinutes()).padStart(2, '0'); };
@@ -139,8 +146,8 @@ function isBusy() {
   if ($('#modal')?.open) return true;
   return !!(a && $('#main').contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && (a.value || a.type === 'date'));
 }
-async function doRender(entering) {
-  if (!entering && isBusy()) { pendingAfter = true; return; }
+async function doRender(entering, force = false) {
+  if (!entering && !force && isBusy()) { pendingAfter = true; return; }
   if (rendering) { pendingAfter = true; return; }
   rendering = true;
   try {
@@ -283,7 +290,7 @@ function docsAlertBlock() {
   const items = upcomingDocs(120);
   if (!list('docs').length) return empty('Add your passport, civil ID, visas and licences to get expiry reminders.', ' <a class="link" href="#documents">Add documents</a>');
   if (!items.length) return empty('Nothing expires in the next 4 months');
-  return `<ul class="alerts">${items.slice(0, 5).map((d) => `<li class="${d.days < 0 ? 'expired' : d.days <= 30 ? 'urgent' : d.days <= 90 ? 'soon' : ''}"><b>${esc(d.name)}</b><small>${d.days < 0 ? 'Expired ' + relDays(d.days) : 'Expires ' + relDays(d.days)} · ${fmtDate(d.expiry)}</small></li>`).join('')}</ul>`;
+  return `<ul class="alerts">${items.slice(0, 5).map((d) => `<li class="${d.days < 0 ? 'expired' : d.days <= 30 ? 'urgent' : d.days <= 90 ? 'soon' : ''}"><b>${esc(d.name)}${d.person && d.person !== people()[0] ? ` <em class="who">${esc(d.person)}</em>` : ''}</b><small>${d.days < 0 ? 'Expired ' + relDays(d.days) : 'Expires ' + relDays(d.days)} · ${fmtDate(d.expiry)}</small></li>`).join('')}</ul>`;
 }
 
 function goalsBlock({ max = 4 } = {}) {
@@ -431,28 +438,66 @@ const VIEW_RENDER = {
     }).join('')}</div>` : card('No goals yet', empty('Examples: “Finish Revit course”, “Pass CFA Level I”, “Sub-15s cube average”.', ' <button class="link" data-add="goal">Create your first goal</button>'))}`;
   },
 
+  async files() {
+    const ppl = people();
+    if (!filesView.person || !ppl.includes(filesView.person)) filesView.person = ppl[0];
+    let all = [];
+    try { all = await V.listFiles(); } catch (e) { return card('Files', empty('Could not open the vault folder: ' + e.message)); }
+    const mine = all.filter((f) => f.person === filesView.person);
+    const counts = Object.fromEntries(V.CATEGORIES.map((c) => [c, mine.filter((f) => f.category === c).length]));
+    const extraCats = [...new Set(mine.map((f) => f.category).filter((c) => c && !V.CATEGORIES.includes(c)))];
+    const q = filesView.q.toLowerCase();
+    const shown = (q ? all.filter((f) => f.path.toLowerCase().includes(q)) : mine.filter((f) => filesView.category === 'All' || f.category === filesView.category))
+      .sort((a, b) => b.modified - a.modified);
+    const typeOf = (n) => { const e = (n.split('.').pop() || '').toLowerCase(); return /^(png|jpe?g|webp|gif|heic)$/.test(e) ? 'img' : e === 'pdf' ? 'pdf' : /^(docx?|odt|rtf|txt)$/.test(e) ? 'doc' : /^(xlsx?|csv)$/.test(e) ? 'xls' : 'file'; };
+    const root = await V.vaultRoot();
+    return `<div class="page-head"><h1>Files</h1><div class="actions"><button class="btn ghost" data-vault-reveal="">Open folder</button><button class="btn primary" data-vault-upload>+ Add files</button></div></div>
+      <div class="people-tabs">${ppl.map((p) => `<button class="person ${p === filesView.person && !q ? 'on' : ''}" data-person="${esc(p)}"><span class="avatar">${esc(p.slice(0, 1).toUpperCase())}</span>${esc(p)}<small>${all.filter((f) => f.person === p).length}</small></button>`).join('')}<button class="person add" data-add-person>+ Add family member</button></div>
+      <div class="files-layout">
+        <nav class="card cats">
+          <button class="${filesView.category === 'All' ? 'on' : ''}" data-cat="All"><span>All files</span><small>${mine.length}</small></button>
+          ${[...V.CATEGORIES, ...extraCats].map((c) => `<button class="${filesView.category === c ? 'on' : ''}" data-cat="${esc(c)}"><span>${esc(c)}</span><small>${counts[c] ?? mine.filter((f) => f.category === c).length}</small></button>`).join('')}
+        </nav>
+        <section class="card files-main" data-dropzone>
+          <div class="files-toolbar"><input type="search" placeholder="Search all files…" value="${esc(filesView.q)}" data-files-search><small class="muted">${q ? `${shown.length} result${shown.length === 1 ? '' : 's'} across everyone` : `${esc(filesView.person)} · ${esc(filesView.category === 'All' ? 'All files' : filesView.category)}`}</small></div>
+          ${shown.length ? `<div class="file-grid">${shown.map((f) => `<article class="file" data-file="${esc(f.path)}" title="${esc(f.path)}">
+              <div class="file-thumb ${typeOf(f.name)}" data-file-thumb="${esc(f.path)}"><span>${typeOf(f.name) === 'img' ? '' : esc((f.name.split('.').pop() || '').toUpperCase().slice(0, 4))}</span></div>
+              <div class="file-info"><b>${esc(f.name)}</b><small>${q ? esc(f.person) + ' · ' : ''}${esc(f.category || '—')} · ${fmtSize(f.size)} · ${fmtDate(f.modified, { day: 'numeric', month: 'short', year: 'numeric' })}</small></div>
+              <div class="file-actions"><button class="icon-btn" data-vault-open="${esc(f.path)}" title="Open">↗</button><button class="icon-btn" data-vault-reveal="${esc(f.path)}" title="Show in folder">⌕</button><button class="icon-btn" data-vault-move="${esc(f.path)}" title="Move">⇄</button><button class="icon-btn danger" data-vault-del="${esc(f.path)}" title="Delete">✕</button></div>
+            </article>`).join('')}</div>` : `<div class="drop-empty"><svg viewBox="0 0 24 24" class="ico big"><path d="M12 16V4 M7 9l5-5 5 5 M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg><p>${q ? 'No files match your search.' : 'Drag files here, or click <b>Add files</b>.'}</p><small>Passport copies, visas, civil IDs, CVs, interview documents — anything you need to find quickly.</small></div>`}
+          <div class="drop-overlay"><span>Drop to add to ${esc(filesView.person)} · ${esc(filesView.category === 'All' ? 'Other' : filesView.category)}</span></div>
+        </section>
+      </div>
+      <p class="muted vault-path">Stored on this PC in <code>${esc(root)}</code>. Deleted files go to a hidden <code>.trash</code> folder inside it.</p>`;
+  },
+
   async documents() {
-    const docs = list('docs').map((d) => ({ ...d, days: d.expiry ? daysUntil(d.expiry) : null })).sort((a, b) => (a.days ?? 99999) - (b.days ?? 99999));
+    const ppl = people();
+    const pf = docsPerson;
+    const docs = list('docs').filter((d) => pf === 'All' || (d.person || ppl[0]) === pf).map((d) => ({ ...d, days: d.expiry ? daysUntil(d.expiry) : null })).sort((a, b) => (a.days ?? 99999) - (b.days ?? 99999));
     const groups = [['Visas', (d) => /visa/i.test(d.type)], ['IDs & passports', (d) => /passport|civil|id|licen/i.test(d.type) && !/visa/i.test(d.type)], ['Other', () => true]];
     const used = new Set();
     const sections = groups.map(([title, test]) => {
       const items = docs.filter((d) => !used.has(d.id) && test(d)); items.forEach((d) => used.add(d.id));
       return items.length ? `<h3 class="sub">${title}</h3><div class="doc-grid">${items.map(docCard).join('')}</div>` : '';
     }).join('');
-    return `<div class="page-head"><h1>Documents & visas</h1><div class="actions"><button class="btn primary" data-add="doc">+ Add document</button></div></div>
-      <p class="muted">Stored on your devices and in your own OneDrive only. You'll get reminders 90, 30 and 7 days before anything expires.</p>
+    return `<div class="page-head"><h1>Expiry dates</h1><div class="actions"><button class="btn primary" data-add="doc">+ Add document</button></div></div>
+      <p class="muted">Passports, IDs, visas and licences for you and your family. You'll get reminders 90, 30 and 7 days before anything expires. Keep the scans themselves in <a class="link" href="#files">Files</a>.</p>
+      ${ppl.length > 1 ? `<div class="people-tabs small">${['All', ...ppl].map((p) => `<button class="person ${p === pf ? 'on' : ''}" data-doc-person="${esc(p)}">${esc(p)}</button>`).join('')}</div>` : ''}
       ${docs.length ? sections : card('Nothing added yet', empty('Add your passport, Kuwait civil ID, e-visas, visa stickers and driving licence. You can attach a photo or scan of each.', ' <button class="link" data-add="doc">Add the first one</button>'))}`;
   },
 
   async travel() {
+    const tabs = `<div class="seg tabs-seg"><button class="btn ${travelView.tab === 'trips' ? 'on' : 'ghost'}" data-travel-tab="trips">Trips</button><button class="btn ${travelView.tab === 'flights' ? 'on' : 'ghost'}" data-travel-tab="flights">Flights</button></div>`;
+    if (travelView.tab === 'flights') return flightsView(tabs);
     const trips = list('trips').sort((a, b) => b.from.localeCompare(a.from));
     const countries = new Map();
     for (const t of trips) countries.set(t.country, (countries.get(t.country) || 0) + 1);
-    const daysAbroad = trips.reduce((s, t) => s + Math.max(1, Math.round((new Date(t.to || t.from) - new Date(t.from)) / 86400000) + 1), 0);
+    const daysAbroad = trips.reduce((s, t) => s + Math.max(1, Math.round((D(t.to || t.from) - D(t.from)) / 86400000) + 1), 0);
     const years = new Map();
     for (const t of trips) { const y = t.from.slice(0, 4); years.set(y, (years.get(y) || 0) + 1); }
     const thisYear = String(new Date().getFullYear());
-    return `<div class="page-head"><h1>Travel history</h1><div class="actions"><button class="btn ghost" data-import="trips">Import CSV</button><button class="btn primary" data-add="trip">+ Add trip</button></div></div>
+    return `<div class="page-head"><h1>Travel history</h1><div class="actions">${tabs}<button class="btn ghost" data-import="trips">Import CSV</button><button class="btn primary" data-add="trip">+ Add trip</button></div></div>
       <div class="stat-row">
         <div class="stat"><strong>${trips.length}</strong><small>trips</small></div>
         <div class="stat"><strong>${countries.size}</strong><small>countries</small></div>
@@ -460,9 +505,9 @@ const VIEW_RENDER = {
         <div class="stat"><strong>${years.get(thisYear) || 0}</strong><small>trips in ${thisYear}</small></div>
       </div>
       ${trips.length ? `<section class="card"><h2>Countries</h2><div class="chips">${[...countries.entries()].sort((a, b) => b[1] - a[1]).map(([c, n]) => `<span class="chip">${esc(c)} <b>${n}</b></span>`).join('')}</div></section>
-      <section class="card"><table class="table"><thead><tr><th>Dates</th><th>Country</th><th>Purpose</th><th>Cities</th></tr></thead><tbody>
-      ${trips.map((t) => `<tr data-edit-trip="${t.id}"><td>${fmtDate(t.from)}${t.to && t.to !== t.from ? ' – ' + fmtDate(t.to) : ''}</td><td>${esc(t.country)}</td><td>${esc(t.purpose || '')}</td><td>${esc(t.cities || '')}</td></tr>`).join('')}
-      </tbody></table></section>` : card('No trips yet', empty('Import your travel log (CSV with columns: from, to, country, purpose, cities) or add trips one by one.'))}`;
+      <section class="card"><table class="table"><thead><tr><th>Dates</th><th>Country</th><th>Cities</th></tr></thead><tbody>
+      ${trips.map((t) => `<tr data-edit-trip="${t.id}"><td>${fmtDate(t.from)}${t.to && t.to !== t.from ? ' – ' + fmtDate(t.to) : ''}</td><td>${esc(t.country)}</td><td>${esc(t.cities || '')}</td></tr>`).join('')}
+      </tbody></table></section>` : card('No trips yet', empty('Import your travel log (CSV with columns: from, to, country, cities) or add trips one by one.'))}`;
   },
 
   async health() {
@@ -512,11 +557,49 @@ const VIEW_RENDER = {
   },
 };
 
+// ---------- flights (myFlightradar24 export) ----------
+const ap = (s) => { const m = (s || '').match(/^(.*?)\s*\/\s*(.*?)\s*\(([A-Z0-9]{3})\/([A-Z0-9]{4})\)/); return m ? { city: m[1], name: m[2], iata: m[3] } : { city: s, name: s, iata: (s || '').slice(0, 3).toUpperCase() }; };
+const airlineName = (s) => (s || '').replace(/\s*\(.*\)\s*$/, '');
+const aircraftName = (s) => (s || '').replace(/\s*\(.*\)\s*$/, '');
+const durMin = (s) => { const m = (s || '').match(/(\d+):(\d+)/); return m ? +m[1] * 60 + +m[2] : 0; };
+
+function flightsView(tabs) {
+  const fl = list('flights').sort((a, b) => (b.date + b.dep).localeCompare(a.date + a.dep));
+  const head = `<div class="page-head"><h1>Flights</h1><div class="actions">${tabs}<button class="btn primary" data-import="flights">Import Flightradar24 CSV</button></div></div>`;
+  if (!fl.length) return head + card('No flights yet', empty('In my.flightradar24.com go to Settings → Export and import the CSV here.'));
+  const mins = fl.reduce((s, f) => s + durMin(f.duration), 0);
+  const count = (key) => { const m = new Map(); for (const f of fl) { const k = key(f); if (k) m.set(k, (m.get(k) || 0) + 1); } return [...m.entries()].sort((a, b) => b[1] - a[1]); };
+  const apSet = new Map();
+  for (const f of fl) for (const a of [ap(f.from), ap(f.to)]) apSet.set(a.iata, { ...a, n: (apSet.get(a.iata)?.n || 0) + 1 });
+  const airlines = count((f) => airlineName(f.airline));
+  const aircraft = count((f) => aircraftName(f.aircraft));
+  const routes = count((f) => [ap(f.from).iata, ap(f.to).iata].sort().join(' ⇄ '));
+  const longest = [...fl].sort((a, b) => durMin(b.duration) - durMin(a.duration))[0];
+  const thisYear = String(new Date().getFullYear());
+  const bars = (rows, max = 6) => { const top = rows.slice(0, max); const hi = top[0]?.[1] || 1; return `<ul class="rank">${top.map(([k, n]) => `<li><span>${esc(k)}</span><div class="bar"><i style="width:${(n / hi) * 100}%"></i></div><b>${n}</b></li>`).join('')}</ul>`; };
+  return head + `<div class="stat-row">
+      <div class="stat"><strong>${fl.length}</strong><small>flights</small></div>
+      <div class="stat"><strong>${Math.round(mins / 60)}<em class="unit">h</em></strong><small>in the air · ${(mins / 1440).toFixed(1)} days</small></div>
+      <div class="stat"><strong>${apSet.size}</strong><small>airports</small></div>
+      <div class="stat"><strong>${fl.filter((f) => f.date.startsWith(thisYear)).length}</strong><small>flights in ${thisYear}</small></div>
+    </div>
+    <div class="grid">
+      ${card('Top routes', bars(routes))}
+      ${card('Airlines', bars(airlines))}
+      ${card('Aircraft', bars(aircraft))}
+      ${card('Airports', bars([...apSet.values()].sort((a, b) => b.n - a.n).map((a) => [`${a.iata} · ${a.city}`, a.n])))}
+      ${longest ? card('Longest flight', `<div class="longest"><strong>${ap(longest.from).iata} → ${ap(longest.to).iata}</strong><small>${esc(longest.number)} · ${esc(airlineName(longest.airline))} · ${minsToHM(durMin(longest.duration))}</small><small>${fmtDate(longest.date)} · ${esc(aircraftName(longest.aircraft))}</small></div>`) : ''}
+    </div>
+    <section class="card" style="margin-top:18px"><table class="table flights"><thead><tr><th>Date</th><th>Flight</th><th>Route</th><th>Airline</th><th>Aircraft</th><th>Time</th></tr></thead><tbody>
+    ${fl.map((f) => { const a = ap(f.from), b = ap(f.to); return `<tr><td>${fmtDate(f.date)}</td><td>${esc(f.number)}</td><td><b>${a.iata}</b> → <b>${b.iata}</b><small class="route-cities">${esc(a.city)} → ${esc(b.city)}</small></td><td>${esc(airlineName(f.airline))}</td><td>${esc(aircraftName(f.aircraft))}</td><td>${minsToHM(durMin(f.duration))}</td></tr>`; }).join('')}
+    </tbody></table></section>`;
+}
+
 function docCard(d) {
   const cls = d.days == null ? '' : d.days < 0 ? 'expired' : d.days <= 30 ? 'urgent' : d.days <= 90 ? 'soon' : 'ok';
   return `<article class="doc ${cls}" data-edit-doc="${d.id}">
     <div class="thumb" data-thumb="${esc((d.images || [])[0] || '')}">${(d.images || []).length ? '' : '<span>▤</span>'}</div>
-    <div class="info"><b>${esc(d.name)}</b><small>${esc(d.type)}${d.country ? ' · ' + esc(d.country) : ''}${d.entries ? ' · ' + esc(d.entries) : ''}</small>
+    <div class="info"><b>${esc(d.name)}</b><small>${people().length > 1 ? esc(d.person || people()[0]) + ' · ' : ''}${esc(d.type)}${d.country ? ' · ' + esc(d.country) : ''}${d.entries ? ' · ' + esc(d.entries) : ''}</small>
     ${d.expiry ? `<span class="exp">${d.days < 0 ? 'Expired' : 'Expires'} ${fmtDate(d.expiry)} <em>${relDays(d.days)}</em></span>` : '<span class="exp">No expiry</span>'}
     ${d.stay ? `<small>Max stay: ${esc(d.stay)}</small>` : ''}</div></article>`;
 }
@@ -579,8 +662,9 @@ function docForm(d = {}) {
     title: d.id ? 'Edit document' : 'Add document',
     fields: [
       { name: 'name', label: 'Name', required: true, value: d.name, placeholder: 'e.g. UK e-Visa, Pakistan passport', wide: true },
+      { name: 'person', label: 'Belongs to', type: 'select', options: people(), value: d.person || people()[0] },
       { name: 'type', label: 'Type', type: 'select', options: ['Passport', 'Civil ID', 'E-visa', 'Visa sticker', 'Residence permit', 'Driving licence', 'Insurance', 'Other'], value: d.type || 'Passport' },
-      { name: 'country', label: 'Country', value: d.country },
+      { name: 'country', label: 'Country', value: d.country, wide: true },
       { name: 'issued', label: 'Issue date', type: 'date', value: d.issued },
       { name: 'expiry', label: 'Expiry date', type: 'date', value: d.expiry },
       { name: 'entries', label: 'Entries (visas)', type: 'select', options: ['', 'Single entry', 'Double entry', 'Multiple entry'], value: d.entries || '' },
@@ -609,7 +693,6 @@ function tripForm(t = {}) {
       { name: 'from', label: 'From', type: 'date', required: true, value: t.from },
       { name: 'to', label: 'To', type: 'date', value: t.to },
       { name: 'country', label: 'Country', required: true, value: t.country },
-      { name: 'purpose', label: 'Purpose', type: 'select', options: ['Leisure', 'Studies', 'Home visit', 'Umrah', 'Transit', 'Work', 'Other'], value: t.purpose || 'Leisure' },
       { name: 'cities', label: 'Cities', value: t.cities, wide: true },
     ],
     onSubmit: (v) => upsert('trips', { ...t, ...v }),
@@ -629,6 +712,53 @@ function seasonForm(s = {}) {
     ],
     onSubmit: (v) => upsert('seasons', { ...s, ...v, date: new Date(v.date).toISOString() }),
     onDelete: s.id ? () => remove('seasons', s.id) : null,
+  });
+}
+
+async function addFiles(person, category, files) {
+  let n = 0;
+  for (const f of files) { try { await V.saveFile(person, category, f); n++; } catch (e) { toast(`${f.name}: ${e.message || e}`, 'error'); } }
+  if (n) toast(`Added ${n} file${n === 1 ? '' : 's'} to ${person} · ${category}`, 'ok');
+  filesView.person = person; filesView.category = category; filesView.q = '';
+  return doRender(false, true);
+}
+
+function uploadForm() {
+  openForm({
+    title: 'Add files',
+    submitLabel: 'Add',
+    fields: [
+      { name: 'person', label: 'Whose files', type: 'select', options: people(), value: filesView.person || people()[0] },
+      { name: 'category', label: 'Folder', type: 'select', options: V.CATEGORIES, value: filesView.category === 'All' ? 'Other' : filesView.category },
+      { name: 'files', label: 'Files', type: 'file', multiple: true, wide: true, hint: 'You can also drag files straight onto the Files page.' },
+    ],
+    onSubmit: async (v) => { if (!v.files.length) throw new Error('Choose at least one file'); await addFiles(v.person, v.category, v.files); },
+  });
+}
+
+function moveForm(rel) {
+  const [person, category] = rel.split('/');
+  openForm({
+    title: 'Move file', submitLabel: 'Move',
+    fields: [
+      { name: 'person', label: 'Person', type: 'select', options: people(), value: person },
+      { name: 'category', label: 'Folder', type: 'select', options: V.CATEGORIES, value: V.CATEGORIES.includes(category) ? category : 'Other' },
+    ],
+    onSubmit: async (v) => { await V.moveFile(rel, v.person, v.category); toast('Moved', 'ok'); doRender(false, true); },
+  });
+}
+
+function personForm() {
+  openForm({
+    title: 'Add family member', submitLabel: 'Add',
+    fields: [{ name: 'name', label: 'Name', required: true, placeholder: 'e.g. Mom, Dad, Sara', wide: true }],
+    onSubmit: async (v) => {
+      const name = v.name.replace(/[<>:"/\\|?*]/g, '').trim();
+      if (!name) throw new Error('Enter a name');
+      if (people().some((p) => p.toLowerCase() === name.toLowerCase())) throw new Error('Already added');
+      await setSetting('people', [...people(), name]);
+      filesView.person = name; filesView.category = 'All';
+    },
   });
 }
 
@@ -675,6 +805,8 @@ function bindView(root) {
   root.onclick = async (e) => {
     const ext = e.target.closest('a[target=_blank]');
     if (ext && isApp()) { e.preventDefault(); return openExternal(ext.href); }
+    const fileCard = e.target.closest('[data-file]');
+    if (fileCard && !e.target.closest('button')) { if (e.detail === 2) return V.openFile(fileCard.dataset.file); return; }
     const t = e.target.closest('button, [data-edit-plan], [data-edit-doc], [data-edit-trip], [data-edit-season], [data-day]');
     if (!t) return;
     const ds = t.dataset;
@@ -691,6 +823,20 @@ function bindView(root) {
       if (ds.editTask) { const lt = list('localTasks').find((x) => x.id === ds.editTask); return taskForm(lt); }
       if (ds.refresh) { t.classList.add('spin'); await refresh(ds.refresh, true); t.classList.remove('spin'); return; }
       if (ds.join) return joinMeeting(ds.join);
+      // ----- files vault -----
+      if (ds.person) { filesView.person = ds.person; filesView.q = ''; filesView.category = 'All'; return doRender(false, true); }
+      if (ds.cat) { filesView.category = ds.cat; filesView.q = ''; return doRender(false, true); }
+      if (ds.addPerson !== undefined) return personForm();
+      if (ds.vaultUpload !== undefined) return uploadForm();
+      if (ds.vaultOpen) return V.openFile(ds.vaultOpen);
+      if (ds.vaultReveal !== undefined) return V.revealFolder(ds.vaultReveal);
+      if (ds.vaultMove) return moveForm(ds.vaultMove);
+      if (ds.vaultDel) {
+        if (!t.dataset.armed) { t.dataset.armed = '1'; t.classList.add('armed'); t.title = 'Click again to delete'; setTimeout(() => { delete t.dataset.armed; t.classList.remove('armed'); }, 3000); return; }
+        await V.deleteFile(ds.vaultDel); toast('Moved to the vault’s trash', 'ok'); return doRender(false, true);
+      }
+      if (ds.docPerson) { docsPerson = ds.docPerson; return doRender(false, true); }
+      if (ds.travelTab) { travelView.tab = ds.travelTab; return doRender(true); }
       if (ds.cal !== undefined) { const n = +ds.cal; if (n === 0) { const t = new Date(); calView.y = t.getFullYear(); calView.m = t.getMonth(); calView.sel = null; } else { const d = new Date(calView.y, calView.m + n, 1); calView.y = d.getFullYear(); calView.m = d.getMonth(); } return doRender(true); }
       if (ds.day) { calView.sel = ds.day; const d = D(ds.day); if (d.getMonth() !== calView.m) { calView.y = d.getFullYear(); calView.m = d.getMonth(); return doRender(true); } return render(); }
       if (ds.add === 'plan') return planForm(ds.date ? { date: ds.date } : {});
@@ -724,6 +870,21 @@ function bindView(root) {
         return;
       }
       if (ds.import === 'backup') { const f = await pickFile('application/json'); if (!f) return; await S.importSnapshot(JSON.parse(await f.text()), { merge: true }); return toast('Backup restored', 'ok'); }
+      if (ds.import === 'flights') {
+        const f = await pickFile('.csv,.xls,text/csv'); if (!f) return;
+        const rows = parseCSV(await f.text());
+        const h = rows[0].map((x) => x.trim().toLowerCase());
+        const c = (n) => h.indexOf(n);
+        if (c('flight number') < 0) throw new Error('This doesn’t look like a Flightradar24 export');
+        const existing = new Set(list('flights').map((x) => `${x.date}|${x.number}|${x.dep}`));
+        let added = 0;
+        for (const r of rows.slice(1)) {
+          const fl = { date: r[c('date')], number: r[c('flight number')], from: r[c('from')], to: r[c('to')], dep: r[c('dep time')], arr: r[c('arr time')], duration: r[c('duration')], airline: r[c('airline')], aircraft: r[c('aircraft')], registration: r[c('registration')] || '' };
+          if (!fl.date || existing.has(`${fl.date}|${fl.number}|${fl.dep}`)) continue;
+          await upsert('flights', fl); added++;
+        }
+        return toast(`Imported ${added} flights`, 'ok');
+      }
       if (ds.import === 'trips') {
         const f = await pickFile('.csv,text/csv'); if (!f) return;
         const rows = parseCSV(await f.text());
@@ -732,7 +893,7 @@ function bindView(root) {
         const existing = new Set(list('trips').map((t) => `${t.from}|${t.country}`));
         let added = 0;
         for (const r of rows.slice(1)) {
-          const trip = { from: toISO(r[col('from')] || ''), to: toISO(r[col('to')] || ''), country: (r[col('country')] || '').trim(), purpose: (r[col('purpose')] || '').trim(), cities: (r[col('cities')] || '').trim() };
+          const trip = { from: toISO(r[col('from')] || ''), to: toISO(r[col('to')] || ''), country: (r[col('country')] || '').trim(), cities: (r[col('cities')] || '').trim() };
           if (!trip.from || !trip.country || existing.has(`${trip.from}|${trip.country}`)) continue;
           await upsert('trips', trip); added++;
         }
@@ -771,6 +932,33 @@ function bindView(root) {
       }
     } catch (err) { toast(err.message, 'error'); }
   };
+
+  // files: live search, drag & drop, thumbnails
+  const search = $('[data-files-search]', root);
+  if (search) {
+    let tmr;
+    search.oninput = () => { clearTimeout(tmr); tmr = setTimeout(async () => {
+      filesView.q = search.value; const pos = search.selectionStart;
+      await doRender(false, true);
+      const again = $('[data-files-search]'); if (again) { again.focus(); again.setSelectionRange(pos, pos); }
+    }, 180); };
+  }
+  const zone = $('[data-dropzone]', root);
+  if (zone) {
+    let depth = 0;
+    zone.ondragenter = (e) => { e.preventDefault(); depth++; zone.classList.add('dragging'); };
+    zone.ondragover = (e) => e.preventDefault();
+    zone.ondragleave = () => { if (--depth <= 0) { depth = 0; zone.classList.remove('dragging'); } };
+    zone.ondrop = async (e) => {
+      e.preventDefault(); depth = 0; zone.classList.remove('dragging');
+      const files = [...(e.dataTransfer?.files || [])];
+      if (files.length) await addFiles(filesView.person, filesView.category === 'All' ? 'Other' : filesView.category, files);
+    };
+  }
+  $$('[data-file-thumb]', root).forEach(async (el) => {
+    const url = await V.thumbnailURL(el.dataset.fileThumb).catch(() => null);
+    if (url) { el.style.backgroundImage = `url("${url}")`; el.classList.add('has-img'); }
+  });
 
   // load document thumbnails from IndexedDB
   $$('[data-thumb]', root).forEach(async (el) => {

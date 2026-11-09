@@ -12,6 +12,9 @@ use std::net::TcpListener;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use std::path::{Component, Path, PathBuf};
+
+use base64::Engine;
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -143,6 +146,169 @@ fn notify(app: AppHandle, title: String, body: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+
+// ---------------- File vault: Documents\Command Centre Vault ----------------
+fn vault_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .document_dir()
+        .map_err(|e| e.to_string())?
+        .join("Command Centre Vault");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+/// Resolve a relative vault path safely (no "..", no absolute paths).
+fn vault_path(app: &AppHandle, rel: &str) -> Result<PathBuf, String> {
+    let rel_path = Path::new(rel);
+    if rel_path.components().any(|c| !matches!(c, Component::Normal(_))) {
+        return Err("Invalid file path".into());
+    }
+    Ok(vault_dir(app)?.join(rel_path))
+}
+
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(b) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                out.push(b);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+#[derive(Serialize)]
+struct VaultEntry {
+    path: String,
+    size: u64,
+    modified: u64,
+    is_dir: bool,
+}
+
+fn walk(root: &Path, dir: &Path, out: &mut Vec<VaultEntry>) {
+    let Ok(read) = std::fs::read_dir(dir) else { return };
+    for entry in read.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') || name.eq_ignore_ascii_case("desktop.ini") || name.eq_ignore_ascii_case("thumbs.db") {
+            continue;
+        }
+        let path = entry.path();
+        let Ok(meta) = entry.metadata() else { continue };
+        let rel = path
+            .strip_prefix(root)
+            .map(|p| p.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect::<Vec<_>>().join("/"))
+            .unwrap_or_default();
+        let modified = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        out.push(VaultEntry { path: rel, size: meta.len(), modified, is_dir: meta.is_dir() });
+        if meta.is_dir() {
+            walk(root, &path, out);
+        }
+    }
+}
+
+#[tauri::command]
+fn vault_root(app: AppHandle) -> Result<String, String> {
+    Ok(vault_dir(&app)?.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn vault_list(app: AppHandle) -> Result<Vec<VaultEntry>, String> {
+    let root = vault_dir(&app)?;
+    let mut out = Vec::new();
+    walk(&root, &root, &mut out);
+    Ok(out)
+}
+
+#[tauri::command]
+fn vault_write(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let tauri::ipc::InvokeBody::Raw(data) = request.body() else {
+        return Err("Expected file data".into());
+    };
+    let rel = request
+        .headers()
+        .get("x-path")
+        .ok_or("Missing file path")?
+        .to_str()
+        .map_err(|e| e.to_string())?;
+    let target = vault_path(&app, &percent_decode(rel))?;
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&target, data).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn vault_open(app: AppHandle, path: String) -> Result<(), String> {
+    open::that(vault_path(&app, &path)?).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn vault_reveal(app: AppHandle, path: String) -> Result<(), String> {
+    let target = if path.is_empty() { vault_dir(&app)? } else { vault_path(&app, &path)? };
+    #[cfg(target_os = "windows")]
+    {
+        if target.is_file() {
+            return std::process::Command::new("explorer")
+                .arg(format!("/select,{}", target.display()))
+                .spawn()
+                .map(|_| ())
+                .map_err(|e| e.to_string());
+        }
+    }
+    let dir = if target.is_dir() { target } else { target.parent().map(|p| p.to_path_buf()).unwrap_or(target) };
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    open::that(dir).map_err(|e| e.to_string())
+}
+
+/// "Delete" moves the file into the vault's hidden .trash folder, so nothing is lost by accident.
+#[tauri::command]
+fn vault_delete(app: AppHandle, path: String) -> Result<(), String> {
+    let src = vault_path(&app, &path)?;
+    let trash = vault_dir(&app)?.join(".trash");
+    std::fs::create_dir_all(&trash).map_err(|e| e.to_string())?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let name = format!("{}-{}", stamp, path.replace('/', " - "));
+    std::fs::rename(&src, trash.join(name)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn vault_move(app: AppHandle, from: String, to: String) -> Result<(), String> {
+    let src = vault_path(&app, &from)?;
+    let dst = vault_path(&app, &to)?;
+    if let Some(parent) = dst.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::rename(src, dst).map_err(|e| e.to_string())
+}
+
+/// Small images only (for thumbnails), returned as base64.
+#[tauri::command]
+fn vault_read_thumb(app: AppHandle, path: String) -> Result<String, String> {
+    let p = vault_path(&app, &path)?;
+    let meta = std::fs::metadata(&p).map_err(|e| e.to_string())?;
+    if meta.len() > 12 * 1024 * 1024 {
+        return Err("Too large for a preview".into());
+    }
+    let bytes = std::fs::read(p).map_err(|e| e.to_string())?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+}
+
 fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.unminimize();
@@ -161,7 +327,10 @@ fn main() {
             Some(vec!["--minimized"]),
         ))
         .plugin(tauri_plugin_notification::init())
-        .invoke_handler(tauri::generate_handler![net_request, oauth_listen, oauth_wait, open_url, notify])
+        .invoke_handler(tauri::generate_handler![
+            net_request, oauth_listen, oauth_wait, open_url, notify,
+            vault_root, vault_list, vault_write, vault_open, vault_reveal, vault_delete, vault_move, vault_read_thumb
+        ])
         .setup(move |app| {
             // Start with Windows (can be turned off in Task Manager → Startup apps).
             let _ = app.autolaunch().enable();

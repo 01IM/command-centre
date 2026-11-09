@@ -50,9 +50,18 @@ The to-do list already works inside the app. Only do this if you also want tasks
 2. **Authentication → Add a platform → Mobile and desktop applications** → tick/add `http://localhost` → Save. Turn on **Allow public client flows**.
 3. Copy the **Application (client) ID** into Command Centre → **Settings → Microsoft To Do** → **Connect**.
 
-## 5. Travel history
+## 5. Travel history and flights
 
-**Travel → Import CSV** and choose `travel-history.csv` (columns: `from,to,country,purpose,cities`, dates as `DD/MM/YYYY` or `YYYY-MM-DD`).
+- **Travel → Trips → Import CSV**: choose `travel-history.csv` (columns `from,to,country,cities`, dates as `DD/MM/YYYY` or `YYYY-MM-DD`).
+- **Travel → Flights → Import Flightradar24 CSV**: the export from my.flightradar24.com (Settings → Export).
+
+## 6. Files (family document vault)
+
+**Files** keeps passport copies, visas, civil IDs, CVs, interview documents and so on for you and each family member. Click **+ Add family member** to add people, then drag files onto the page or use **+ Add files**. They're saved as normal files in `Documents\Command Centre Vault\<Person>\<Folder>`, so you can also open that folder in File Explorer or back it up to a USB drive or cloud folder. Deleted files go to a hidden `.trash` folder inside the vault.
+
+## Running in the background
+
+Closing the window keeps Command Centre running in the system tray. It starts with Windows and keeps syncing your calendar, weather and Fitbit data, and keeps sending reminders. To quit completely, right-click the tray icon → **Quit**. To stop it starting with Windows, use Task Manager → Startup apps.
 
 ## Cube timer
 
