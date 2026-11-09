@@ -1,6 +1,6 @@
 # Command Centre
 
-Imran's personal dashboard for Windows. It runs on its own: no Claude, no subscriptions, no server.
+Imran's personal dashboard for **Windows, iPhone and iPad**, kept in sync. It runs on its own: no Claude, no subscriptions, nothing to pay for.
 
 **What's on it:** a 3×3 scramble and timer · Kuwait time plus London, New York and Karachi clocks · a month calendar of your meetings and plans, with **Join** opening the Zoom/Teams app directly · Kuwait prayer times with a countdown · a 7-day forecast in °C with an hourly chart and moon phase · to-do list · goals with checkpoints · document and visa expiry reminders · travel history · Fitbit Air sleep and heart rate · Overwatch season countdown · quick notes.
 
@@ -63,9 +63,39 @@ The to-do list already works inside the app. Only do this if you also want tasks
 
 Closing the window keeps Command Centre running in the system tray. It starts with Windows and keeps syncing your calendar, weather and Fitbit data, and keeps sending reminders. To quit completely, right-click the tray icon → **Quit**. To stop it starting with Windows, use Task Manager → Startup apps.
 
+## 7. iPhone and iPad
+
+The phone and tablet version is the same app, hosted free at **https://01im.github.io/command-centre/**.
+
+1. On the iPhone or iPad, open that link in **Safari**.
+2. Tap **Share** (the square with the arrow) → **Add to Home Screen** → **Add**.
+3. Open **Command** from the home screen. It runs full-screen like a normal app and works offline.
+
+The layout is tuned for the iPhone 16 Pro and the iPad 10th gen in both orientations. A real App Store app would need Apple's paid developer account, which is why it's done this way.
+
+## 8. Sync between the laptop, iPhone and iPad (free, encrypted)
+
+Sync uses your own free **Supabase** project. Everything is **encrypted on the device with a passphrase only you know** before it's uploaded, so Supabase only ever stores scrambled data.
+
+**One-time setup (about 10 minutes, on the laptop):**
+1. Go to **supabase.com** → **Start your project** → sign in with GitHub.
+2. **New project**: any name (e.g. `command-centre`), set a database password (save it somewhere, though you won't need it day to day), pick the region closest to Kuwait (e.g. *Frankfurt* or *Mumbai*), Free plan → **Create**. Wait about 2 minutes.
+3. **SQL Editor** → **New query** → paste the whole of [`docs/supabase-setup.sql`](docs/supabase-setup.sql) → **Run**. It should say *Success*.
+4. **Authentication → Sign In / Providers → Email**: turn **Confirm email** OFF → Save. This avoids a confirmation email for an account only you use.
+5. **Project Settings → API Keys** (or *Data API*): copy the **Project URL** and the **anon / publishable** key.
+6. In Command Centre on the laptop → **Settings → Sync across devices**: paste the URL and key, enter your email, choose a password and an **encryption passphrase** → **Create account (first device)**.
+
+**On the iPhone and iPad:** Settings → Sync across devices → the same URL, key, email, password and passphrase → **Sign in**.
+
+What syncs: plans, to-dos, goals, notes, expiry dates, travel and flights, Overwatch dates, family members, calendars, your profile picture, cube solves, and every file in **Files** (encrypted). Changes reach the other devices within about a minute, and straight away when you open the app.
+
+**Calendars and Fitbit on the phone:** iPhones can't read Google/Outlook calendar links or Fitbit directly, so the Windows app (running in the tray) passes them on through sync. To let the phone and iPad refresh calendars **on their own**, even with the laptop off, add the optional calendar helper: Supabase → **Edge Functions → Deploy a new function → Via Editor** → name it `ics` → paste [`docs/ics-function.ts`](docs/ics-function.ts) → **Deploy**.
+
+**Free-plan notes:** 500 MB of data plus 1 GB of files, which is plenty. Supabase pauses free projects after 7 days with no activity, but daily use keeps it awake. If it ever pauses, click *Restore* in the dashboard.
+
 ## Cube timer
 
-Press and hold **Space** (or the timer) until it turns green, release to start, and press any key to stop. A new scramble appears after every solve. Use **+2 / DNF / ✕** for the last solve. Scrambles use WCA notation, 20 moves, randomly generated (official WCA scrambles come from TNoodle).
+Press and hold **Space**, or touch and hold the timer on the phone/iPad, until it turns green, release to start, and press any key to stop. A new scramble appears after every solve. Use **+2 / DNF / ✕** for the last solve. Scrambles use WCA notation, 20 moves, randomly generated (official WCA scrambles come from TNoodle).
 
 ## Backup
 

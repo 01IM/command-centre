@@ -325,6 +325,13 @@ fn vault_move(app: AppHandle, from: String, to: String) -> Result<(), String> {
     std::fs::rename(src, dst).map_err(|e| e.to_string())
 }
 
+/// Raw file bytes (used by sync to upload encrypted copies).
+#[tauri::command]
+fn vault_read(app: AppHandle, path: String) -> Result<tauri::ipc::Response, String> {
+    let bytes = std::fs::read(vault_path(&app, &path)?).map_err(|e| e.to_string())?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 /// Small images only (for thumbnails), returned as base64.
 #[tauri::command]
 fn vault_read_thumb(app: AppHandle, path: String) -> Result<String, String> {
@@ -357,7 +364,7 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
             net_request, oauth_listen, oauth_wait, open_url, notify,
-            vault_root, vault_list, vault_write, vault_open, vault_reveal, vault_delete, vault_move, vault_read_thumb
+            vault_root, vault_list, vault_write, vault_open, vault_reveal, vault_delete, vault_move, vault_read_thumb, vault_read
         ])
         .setup(move |app| {
             // Start with Windows (can be turned off in Task Manager → Startup apps).

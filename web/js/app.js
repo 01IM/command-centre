@@ -6,6 +6,7 @@ import { isApp, openExternal, joinMeeting } from './net.js';
 import { wxIcon, moonInfo, moonSVG, clockFace, zoneTime } from './visuals.js';
 import { mountCube } from './cube.js';
 import * as V from './vault.js';
+import * as Sync from './sync.js';
 
 const ICON_PATHS = {
   home: 'M3 11 12 4l9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',
@@ -327,7 +328,7 @@ function sparkline(points, w = 300, h = 60) {
 async function healthBlock({ detail = false } = {}) {
   const status = await I.connectionStatus('google');
   const h = cache.health;
-  if (!h) return status === 'connected' ? empty('Syncing sleep and heart rate…') : connectCta('google', 'Show last night’s sleep and your heart rate from your Fitbit Air.');
+  if (!h) return status === 'connected' ? empty('Syncing sleep and heart rate…') : !isApp() ? empty(Sync.enabled() ? 'Connect Fitbit in the Windows app — your sleep and heart rate then sync here.' : 'Turn on sync in Settings to see your Fitbit data from the Windows app.') : connectCta('google', 'Show last night’s sleep and your heart rate from your Fitbit Air.');
   const last = h.sleep?.[0];
   const avg = h.sleep?.length ? Math.round(h.sleep.reduce((s, x) => s + (x.minutes || 0), 0) / h.sleep.length) : null;
   const latest = h.hr?.[h.hr.length - 1];
@@ -376,7 +377,8 @@ const VIEW_RENDER = {
     const first = new Date(view.y, view.m, 1);
     const gridStart = new Date(first); gridStart.setDate(1 - ((first.getDay() + 6) % 7)); // weeks start Monday
     const gridEnd = new Date(gridStart); gridEnd.setDate(gridStart.getDate() + 42);
-    const evs = I.eventsBetween(await kvGet('cache:ics', []), gridStart, gridEnd);
+    const texts = await kvGet('cache:ics', []);
+    const evs = texts.length ? I.eventsBetween(texts, gridStart, gridEnd) : relayEvents(await kvGet('relay:calendar'), gridStart, gridEnd);
     const plans = list('plans');
     const byDay = new Map();
     const add = (key, item) => { if (!byDay.has(key)) byDay.set(key, []); byDay.get(key).push(item); };
@@ -457,7 +459,7 @@ const VIEW_RENDER = {
     const typeOf = (n) => { const e = (n.split('.').pop() || '').toLowerCase(); return /^(png|jpe?g|webp|gif|heic)$/.test(e) ? 'img' : e === 'pdf' ? 'pdf' : /^(docx?|odt|rtf|txt)$/.test(e) ? 'doc' : /^(xlsx?|csv)$/.test(e) ? 'xls' : 'file'; };
     const root = await V.vaultRoot();
     const expiryOf = new Map(); for (const d of list('docs')) for (const p of docFiles(d)) if (d.expiry) expiryOf.set(p, d);
-    return `<div class="page-head"><h1>Files</h1><div class="actions"><button class="btn ghost" data-vault-reveal="">Open folder</button><button class="btn primary" data-vault-upload>+ Add files</button></div></div>
+    return `<div class="page-head"><h1>Files</h1><div class="actions">${isApp() ? '<button class="btn ghost" data-vault-reveal="">Open folder</button>' : ''}<button class="btn primary" data-vault-upload>+ Add files</button></div></div>
       <div class="people-tabs">${ppl.map((p) => `<button class="person ${p === filesView.person && !q ? 'on' : ''}" data-person="${esc(p)}"><span class="avatar">${esc(p.slice(0, 1).toUpperCase())}</span>${esc(p)}<small>${all.filter((f) => f.person === p).length}</small></button>`).join('')}<button class="person add" data-add-person>+ Add family member</button></div>
       <div class="files-layout">
         <nav class="card cats">
@@ -474,7 +476,7 @@ const VIEW_RENDER = {
           <div class="drop-overlay"><span>Drop to add to ${esc(filesView.person)} · ${esc(filesView.category === 'All' ? 'Other' : filesView.category)}</span></div>
         </section>
       </div>
-      <p class="muted vault-path">Stored on this PC in <code>${esc(root)}</code>. Deleted files go to a hidden <code>.trash</code> folder inside it.</p>`;
+      <p class="muted vault-path">${isApp() ? `Stored on this PC in <code>${esc(root)}</code>. Deleted files go to a hidden <code>.trash</code> folder inside it.` : `Stored on ${esc(root)}.`}</p>`;
   },
 
   async documents() {
@@ -530,7 +532,7 @@ const VIEW_RENDER = {
   },
 
   async more() {
-    return `<div class="page-head"><h1>More</h1></div><div class="more-grid">${VIEWS.filter(([id]) => !MOBILE_TABS.includes(id)).map(([id, label]) => `<a href="#${id}" class="card more-tile">${icon(id)}<span>${label}</span></a>`).join('')}</div>`;
+    return `<div class="page-head"><h1>More</h1><div class="actions"><button class="btn ghost" data-theme-flip>${document.documentElement.dataset.theme === 'dark' ? 'Light mode' : 'Dark mode'}</button></div></div><div class="more-grid">${VIEWS.filter(([id]) => !MOBILE_TABS.includes(id)).map(([id, label]) => `<a href="#${id}" class="card more-tile">${icon(id)}<span>${label}</span></a>`).join('')}</div><p class="muted made-m">Made for Imran by Claude</p>`;
   },
 
   async settings() {
@@ -539,24 +541,40 @@ const VIEW_RENDER = {
     const badge = (s) => `<span class="badge ${s}">${s === 'connected' ? 'Connected' : s === 'reconnect' ? 'Needs reconnect' : 'Not connected'}</span>`;
     const l = loc();
     const calAt = cache.calendar?.at;
+    const sc = Sync.config();
+    const syncCard = card('Sync across devices', Sync.enabled()
+      ? `<p class="muted">Your Windows app, iPhone and iPad share everything — encrypted with your passphrase before it leaves this device.</p>
+         <div class="row"><span id="syncStatus">${syncBadge()}</span><span class="spacer"></span><button class="btn ghost sm" data-sync-now>Sync now</button><button class="btn ghost sm" data-sync-off>Sign out</button></div>
+         <small class="muted">${esc(sc.email)} · ${esc(sc.url.replace('https://', ''))}</small>`
+      : `<p class="muted">Keep your Windows app, iPhone and iPad in sync through your own free Supabase project. Data is encrypted with a passphrase only you know. <b>Use the same details and passphrase on every device.</b></p>
+         <form data-form="sync" class="stack">
+           <label><span>Supabase Project URL</span><input name="url" value="${esc(sc?.url || '')}" placeholder="https://abcdxyz.supabase.co" autocomplete="off"></label>
+           <label><span>Supabase anon / publishable key</span><input name="anon" value="${esc(sc?.anon || '')}" placeholder="eyJhbGciOi… or sb_publishable_…" autocomplete="off"></label>
+           <label><span>Your email</span><input name="email" type="email" value="${esc(sc?.email || '')}" autocomplete="username"></label>
+           <label><span>Password (for the sync account)</span><input name="password" type="password" autocomplete="current-password"></label>
+           <label><span>Encryption passphrase</span><input name="passphrase" type="password" autocomplete="new-password"><small>Not stored anywhere online. If you forget it, synced data can't be recovered (your devices keep their own copies).</small></label>
+           <div class="row"><button type="submit" class="btn ghost sm" name="mode" value="signin">Sign in</button><span class="spacer"></span><button type="submit" class="btn primary sm" name="mode" value="create">Create account (first device)</button></div>
+         </form>`);
     return `<div class="page-head"><h1>Settings</h1></div>
     <div class="grid">
+      ${syncCard}
       ${card('Calendars', `<p class="muted">Add each calendar you want to see — e.g. your Google calendar and your Plot.it work calendar. They're all merged into one view, each in its own colour.</p>
         <ul class="cal-list">${I.calendars().map((c) => `<li><i style="background:${esc(c.color)}"></i><div><b>${esc(c.name)}</b><small>${esc(c.url.replace(/^(https?:\/\/[^/]+).*/, '$1/…'))}</small></div><button class="icon-btn" data-cal-edit="${esc(c.id)}" title="Edit">✎</button></li>`).join('') || '<li class="empty">No calendars yet.</li>'}</ul>
         <div class="row">${calAt ? `<small class="muted">Updated ${fmtTime(calAt)}</small>` : ''}<span class="spacer"></span><button class="btn primary sm" data-cal-add>+ Add calendar</button></div>
         <details class="howto"><summary>Where do I find the link?</summary><p><b>Google Calendar:</b> calendar.google.com → ⚙ Settings → click the calendar under “Settings for my calendars” → Integrate calendar → copy <b>Secret address in iCal format</b>.</p><p><b>Outlook / Microsoft 365 (work):</b> outlook.office.com → ⚙ Settings → Calendar → Shared calendars → Publish a calendar → choose the calendar and “Can view all details” → Publish → copy the <b>ICS</b> link.</p><p>Treat these links like passwords — anyone with one can read that calendar.</p></details>`)}
-      ${card('Fitbit Air — sleep & heart rate', `<p class="muted">Needs a free Google Cloud “Desktop app” client (10-minute setup, see the guide). Your health data goes straight from Google to this computer.</p>
+      ${!isApp() ? card('Fitbit, Microsoft To Do & notifications', `<p class="muted">These are set up in the Windows app. With sync on, your Fitbit sleep and heart rate appear here too.</p>`) : ''}
+      ${!isApp() ? '' : card('Fitbit Air — sleep & heart rate', `<p class="muted">Needs a free Google Cloud “Desktop app” client (10-minute setup, see the guide). Your health data goes straight from Google to this computer.</p>
         <form data-form="google-settings" class="stack"><label><span>Client ID</span><input name="googleClientId" value="${esc(state.settings.googleClientId || '')}" placeholder="xxxx.apps.googleusercontent.com"></label>
         <label><span>Client secret</span><input name="googleClientSecret" type="password" value="${esc(state.settings.googleClientSecret || '')}" placeholder="GOCSPX-…"><small>Stays on this computer only.</small></label>
         <div class="row">${badge(gs)}<span class="spacer"></span><button class="btn ghost sm" type="submit">Save</button>${gs !== 'disconnected' ? '<button type="button" class="btn ghost sm" data-disconnect="google">Disconnect</button>' : ''}<button type="button" class="btn primary sm" data-connect="google">${gs === 'connected' ? 'Reconnect' : 'Connect'}</button></div></form>`)}
-      ${card('Microsoft To Do (optional)', `<p class="muted">Your to-do list already works inside the app. Connect this only if you also want tasks from the Microsoft To Do app to show up.</p>
+      ${!isApp() ? '' : card('Microsoft To Do (optional)', `<p class="muted">Your to-do list already works inside the app. Connect this only if you also want tasks from the Microsoft To Do app to show up.</p>
         <form data-form="ms-settings" class="stack"><label><span>Application (client) ID</span><input name="msClientId" value="${esc(state.settings.msClientId || '')}" placeholder="00000000-0000-0000-0000-000000000000"></label>
         <div class="row">${badge(ms)}<span class="spacer"></span><button class="btn ghost sm" type="submit">Save</button>${ms !== 'disconnected' ? '<button type="button" class="btn ghost sm" data-disconnect="microsoft">Disconnect</button>' : ''}<button type="button" class="btn primary sm" data-connect="microsoft">${ms === 'connected' ? 'Reconnect' : 'Connect'}</button></div></form>`)}
       ${card('Appearance', `<form data-form="appearance" class="stack">
         <label><span>Theme</span><select name="theme">${[['system', 'Match Windows'], ['dark', 'Dark'], ['light', 'Light']].map(([v, l]) => `<option value="${v}" ${themePref() === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <div class="row"><button type="button" class="btn ghost sm" data-avatar-change>Change profile picture</button><button type="button" class="btn ghost sm" data-avatar-remove>Remove picture</button><span class="spacer"></span><button class="btn primary sm">Save</button></div></form>`)}
       ${card('Location', `<form data-form="location" class="stack"><label><span>Name</span><input name="name" value="${esc(l.name)}"></label><div class="row2"><label><span>Latitude</span><input name="lat" type="number" step="0.0001" value="${l.lat}"></label><label><span>Longitude</span><input name="lon" type="number" step="0.0001" value="${l.lon}"></label></div><div class="row"><button type="button" class="btn ghost sm" data-reset-loc>Kuwait City</button><span class="spacer"></span><button class="btn primary sm">Save</button></div></form><small class="muted">Used for prayer times (Kuwait method) and weather. Units: °C, km/h.</small>`)}
-      ${card('Notifications', `<form data-form="notify" class="stack">
+      ${!isApp() ? '' : card('Notifications', `<form data-form="notify" class="stack">
         <label class="toggle"><input type="checkbox" name="notifyMeetings" ${state.settings.notifyMeetings !== false ? 'checked' : ''}><span>Alert 10 minutes before meetings</span></label>
         <label class="toggle"><input type="checkbox" name="notifyPrayer" ${state.settings.notifyPrayer ? 'checked' : ''}><span>Alert at each prayer time</span></label>
         <label class="toggle"><input type="checkbox" name="notifyDocs" ${state.settings.notifyDocs !== false ? 'checked' : ''}><span>Document expiry reminders (90 / 30 / 7 days)</span></label>
@@ -759,7 +777,7 @@ function seasonForm(s = {}) {
 async function addFiles(person, category, files) {
   let n = 0;
   for (const f of files) { try { await V.saveFile(person, category, f); n++; } catch (e) { toast(`${f.name}: ${errText(e)}`, 'error'); } }
-  if (n) toast(`Added ${n} file${n === 1 ? '' : 's'} to ${person} · ${category}`, 'ok');
+  if (n) { toast(`Added ${n} file${n === 1 ? '' : 's'} to ${person} · ${category}`, 'ok'); Sync.soon(1500); }
   filesView.person = person; filesView.category = category; filesView.q = '';
   return doRender(false, true);
 }
@@ -785,7 +803,7 @@ function moveForm(rel) {
       { name: 'person', label: 'Person', type: 'select', options: people(), value: person },
       { name: 'category', label: 'Folder', type: 'select', options: V.CATEGORIES, value: V.CATEGORIES.includes(category) ? category : 'Other' },
     ],
-    onSubmit: async (v) => { await V.moveFile(rel, v.person, v.category); toast('Moved', 'ok'); doRender(false, true); },
+    onSubmit: async (v) => { await V.moveFile(rel, v.person, v.category); toast('Moved', 'ok'); Sync.soon(1500); doRender(false, true); },
   });
 }
 
@@ -888,10 +906,13 @@ function bindView(root) {
       if (ds.refresh) { t.classList.add('spin'); await refresh(ds.refresh, true); t.classList.remove('spin'); return; }
       if (ds.join) return joinMeeting(ds.join);
       if (ds.avatarChange !== undefined) return pickAvatar();
+      if (ds.syncNow !== undefined) { await Sync.syncNow(); return Sync.status.error ? toast(Sync.status.error, 'error') : toast('Synced', 'ok'); }
+      if (ds.syncOff !== undefined) { if (!t.dataset.armed) { t.dataset.armed = 1; t.textContent = 'Tap again to sign out'; return; } await Sync.disconnect(); toast('Sync turned off on this device (your data stays here)', 'ok'); return doRender(false, true); }
+      if (ds.themeFlip !== undefined) { await setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'); return doRender(false, true); }
       if (ds.calAdd !== undefined) return calendarForm();
       if (ds.calEdit) return calendarForm(I.calendars().find((c) => c.id === ds.calEdit));
       if (ds.calToggle) { const h = new Set(state.settings.hiddenCalendars || []); h.has(ds.calToggle) ? h.delete(ds.calToggle) : h.add(ds.calToggle); await setSetting('hiddenCalendars', [...h]); cache.calendar = { ...cache.calendar, events: I.eventsBetween(await kvGet('cache:ics', []), startOfDay(), new Date(Date.now() + 15 * 86400000)) }; return doRender(false, true); }
-      if (ds.avatarRemove !== undefined) { await kvSet('profilePhoto', null); await loadAvatar(); return toast('Picture removed', 'ok'); }
+      if (ds.avatarRemove !== undefined) { await kvSet('profilePhoto', null); await kvSet('profilePhotoAt', Date.now()); Sync.soon(1500); await loadAvatar(); return toast('Picture removed', 'ok'); }
       // ----- files vault -----
       if (ds.person) { filesView.person = ds.person; filesView.q = ''; filesView.category = 'All'; return doRender(false, true); }
       if (ds.cat) { filesView.category = ds.cat; filesView.q = ''; return doRender(false, true); }
@@ -902,7 +923,7 @@ function bindView(root) {
       if (ds.vaultMove) return moveForm(ds.vaultMove);
       if (ds.vaultDel) {
         if (!t.dataset.armed) { t.dataset.armed = '1'; t.classList.add('armed'); t.title = 'Click again to delete'; setTimeout(() => { delete t.dataset.armed; t.classList.remove('armed'); }, 3000); return; }
-        await V.deleteFile(ds.vaultDel); toast('Moved to the vault’s trash', 'ok'); return doRender(false, true);
+        await V.deleteFile(ds.vaultDel); toast(isApp() ? 'Moved to the vault’s trash' : 'Deleted', 'ok'); Sync.soon(1500); return doRender(false, true);
       }
       if (ds.docPerson) { docsPerson = ds.docPerson; return doRender(false, true); }
       if (ds.travelTab) { travelView.tab = ds.travelTab; return doRender(true); }
@@ -986,6 +1007,11 @@ function bindView(root) {
       } else if (kind === 'checkpoint') {
         if (!v.title.trim()) return; const g = list('goals').find((x) => x.id === form.dataset.goal);
         await upsert('goals', { ...g, checkpoints: [...(g.checkpoints || []), { title: v.title.trim(), date: v.date, done: false }] });
+      } else if (kind === 'sync') {
+        const mode = e.submitter?.value || 'signin';
+        toast(mode === 'create' ? 'Creating your sync account…' : 'Signing in…');
+        await Sync.connect({ ...v, create: mode === 'create' });
+        toast('Sync is on — this device is now connected', 'ok'); await loadCaches(); loadAvatar(); doRender(false, true);
       } else if (kind === 'appearance') {
         await setTheme(v.theme); toast('Saved', 'ok');
       } else if (kind === 'calendar') {
@@ -1041,6 +1067,12 @@ function bindView(root) {
   });
 }
 
+// Calendar events relayed from the Windows app (used on iPhone / iPad without the calendar helper).
+function relayEvents(r, from, to) {
+  const hidden = new Set(state.settings.hiddenCalendars || []);
+  return (r?.events || []).filter((e) => !hidden.has(e.calId) && new Date(e.end) >= from && new Date(e.start) <= to);
+}
+
 // ---------- syncing ----------
 const LAST = {};
 async function refresh(what, manual = false) {
@@ -1048,8 +1080,23 @@ async function refresh(what, manual = false) {
     if (what === 'calendar') {
       if (!I.calendars().length) return;
       const before = JSON.stringify(cache.calendar?.events || []);
-      try { await I.syncCalendar(); cache.calendarError = null; } catch (e) { cache.calendarError = navigator.onLine ? errText(e) : null; throw e; }
-      cache.calendar = await kvGet('cache:calendar');
+      if (isApp()) {
+        try { await I.syncCalendar(); cache.calendarError = null; } catch (e) { cache.calendarError = navigator.onLine ? errText(e) : null; throw e; }
+        // relay a copy (about a month back and two ahead) for the iPhone / iPad
+        const texts = await kvGet('cache:ics', []);
+        const relay = I.eventsBetween(texts, new Date(Date.now() - 40 * 86400000), new Date(Date.now() + 80 * 86400000), { includeHidden: true });
+        const prev = await kvGet('relay:out:calendar');
+        if (JSON.stringify(prev?.events) !== JSON.stringify(relay)) { await kvSet('relay:out:calendar', { at: Date.now(), events: relay }); Sync.soon(1500); }
+      } else {
+        try { await I.syncCalendar(Sync.proxyFetchICS); cache.calendarError = null; cache.calendarSource = 'direct'; }
+        catch (e) {
+          if (e.code !== 'NOPROXY') { cache.calendarError = navigator.onLine ? errText(e) : null; throw e; }
+          cache.calendarSource = 'relay'; cache.calendarError = null;
+          const r = await kvGet('relay:calendar');
+          if (r) await kvSet('cache:calendar', { at: r.at, events: relayEvents(r, startOfDay(), new Date(Date.now() + 15 * 86400000)) });
+        }
+      }
+      cache.calendar = await kvGet('cache:calendar') || { events: [] };
       if (!manual && current !== 'schedule' && before === JSON.stringify(cache.calendar.events)) { LAST[what] = Date.now(); return; }
     }
     if (what === 'todo') { if (await I.connectionStatus('microsoft') === 'disconnected') return; await I.syncTodo(); cache.todo = await kvGet('cache:todo'); }
@@ -1127,6 +1174,15 @@ function liveUpdate() {
   if (!prayerRefreshing && cache.prayer?.next && now > cache.prayer.next.time) { prayerRefreshing = true; refresh('prayer').finally(() => { prayerRefreshing = false; }); }
 }
 
+function syncBadge() {
+  const st = Sync.status;
+  const when = st.last ? `${fmtTime(st.last)}${sameDay(st.last, new Date()) ? '' : ', ' + fmtDate(st.last, { day: 'numeric', month: 'short' })}` : 'never';
+  if (st.state === 'syncing') return '<span class="badge reconnect">Syncing…</span>';
+  if (st.state === 'error') return `<span class="badge bad" title="${esc(st.error || '')}">Sync problem</span> <small class="muted">${esc((st.error || '').slice(0, 120))}</small>`;
+  if (st.state === 'offline') return `<span class="badge">Offline</span> <small class="muted">last synced ${when}</small>`;
+  return `<span class="badge connected">Synced</span> <small class="muted">${when}</small>`;
+}
+
 // ---------- appearance: theme + profile picture ----------
 const mql = matchMedia('(prefers-color-scheme: light)');
 function themePref() { try { return localStorage.getItem('cc-theme') || 'system'; } catch { return state.settings.theme || 'system'; } }
@@ -1156,7 +1212,7 @@ async function pickAvatar() {
     const size = 320, side = Math.min(img.width, img.height);
     const c = document.createElement('canvas'); c.width = c.height = size;
     c.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
-    await kvSet('profilePhoto', c.toDataURL('image/jpeg', 0.88));
+    await kvSet('profilePhoto', c.toDataURL('image/jpeg', 0.88)); await kvSet('profilePhotoAt', Date.now()); Sync.soon(1500);
     await loadAvatar(); toast('Profile picture updated', 'ok');
   } catch { toast('That image format isn’t supported — try a JPG or PNG', 'error'); }
 }
@@ -1165,7 +1221,7 @@ async function pickAvatar() {
 async function start() {
   await S.loadState();
   if (!state.settings.owSeasonsSeeded) {
-    for (const s of DEFAULT_SEASONS) await upsert('seasons', s);
+    for (const [i, s] of DEFAULT_SEASONS.entries()) if (!list('seasons').some((x) => x.name === s.name)) await upsert('seasons', { id: 'ow-default-' + i, ...s });
     await setSetting('owSeasonsSeeded', true);
   }
   applyTheme(); loadAvatar();
@@ -1173,10 +1229,19 @@ async function start() {
   $('#avatar').onclick = pickAvatar;
   $('#themeToggle').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
   await loadCaches();
-  mountCube($('#cube'));
+  const cube = await mountCube($('#cube'));
   addEventListener('hashchange', route);
   route();
-  S.onChange(() => render());
+  await Sync.init();
+  S.onChange((ev) => {
+    if (ev.type === 'profilePhoto') return loadAvatar();
+    if (ev.type === 'cube') return cube?.reload?.();
+    if (ev.collection === '*') loadCaches().then(() => { if (!isApp()) refresh('calendar'); });
+    else Sync.soon();
+    render();
+  });
+  Sync.onStatus(() => { const el = $('#syncStatus'); if (el) el.innerHTML = syncBadge(); if (current === 'settings' && !isBusy()) render(); });
+  Sync.start();
   await Promise.all([refresh('weather'), refresh('prayer')]);
   tick();
   setInterval(tick, 60_000);
@@ -1186,5 +1251,8 @@ async function start() {
   addEventListener('online', () => { for (const k of Object.keys(LAST)) LAST[k] = 0; tick(); });
 }
 
+
+// Offline support for the iPhone / iPad home-screen version (the Windows app doesn't need it).
+if (!isApp() && 'serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
 start();
