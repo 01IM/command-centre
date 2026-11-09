@@ -385,10 +385,10 @@ const VIEW_RENDER = {
       const d = new Date(gridStart); d.setDate(gridStart.getDate() + i);
       const key = ymd(d); const items = byDay.get(key) || [];
       const chips = items.slice(0, 3).map((x) => x.kind === 'meeting'
-        ? `<span class="chip-ev ${x.e.allDay ? 'allday' : ''} ${x.e.platform ? 'has-join' : ''}">${x.e.allDay ? '' : `<i>${fmtTime(x.e.start).replace(':00', '')}</i>`}${esc(x.e.title)}</span>`
-        : `<span class="chip-ev plan ${esc(x.p.type || 'other')}">${x.p.time ? `<i>${fmtTime(new Date(x.p.date + 'T' + x.p.time)).replace(':00', '')}</i>` : ''}${esc(x.p.title)}</span>`).join('');
+        ? `<span class="chip-ev ${x.e.allDay ? 'allday' : ''} ${x.e.platform ? 'has-join' : ''}" title="${esc(x.e.title)}">${x.e.allDay ? '' : `<i>${fmtTime(x.e.start)}${x.e.platform ? ' · ' + x.e.platform : ''}</i>`}<span class="t">${esc(x.e.title)}</span></span>`
+        : `<span class="chip-ev plan ${esc(x.p.type || 'other')}" title="${esc(x.p.title)}">${x.p.time ? `<i>${fmtTime(new Date(x.p.date + 'T' + x.p.time))}</i>` : ''}<span class="t">${esc(x.p.title)}</span></span>`).join('');
       cells.push(`<button class="cal-cell ${d.getMonth() !== view.m ? 'out' : ''} ${key === todayKey ? 'today' : ''} ${key === sel ? 'sel' : ''} ${d.getDay() === 5 || d.getDay() === 6 ? 'wknd' : ''}" data-day="${key}">
-        <span class="dnum">${d.getDate()}</span><div class="chips">${chips}${items.length > 3 ? `<span class="more-ev">+${items.length - 3} more</span>` : ''}</div></button>`);
+        <span class="dnum">${d.getDate()}</span><div class="cal-chips">${chips}${items.length > 3 ? `<span class="more-ev">+${items.length - 3} more</span>` : ''}</div></button>`);
     }
     const selItems = byDay.get(sel) || [];
     const agenda = selItems.length ? `<ul class="events">${selItems.map((x) => x.kind === 'meeting'
