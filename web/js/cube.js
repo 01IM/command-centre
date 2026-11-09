@@ -167,4 +167,5 @@ export async function mountCube(root) {
     b.blur();
   });
   draw();
+  return { reload: async () => { solves = await kvGet('cube:solves', []); draw(); } };
 }

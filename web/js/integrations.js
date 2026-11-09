@@ -41,18 +41,20 @@ export function calendars() {
     .map((url, i) => ({ id: 'c' + i, name: i === 0 ? 'Personal' : 'Calendar ' + (i + 1), url, color: CAL_COLORS[i % CAL_COLORS.length] }));
 }
 
-export async function syncCalendar() {
+export async function syncCalendar(fetchVia = null) {
   const cals = calendars();
   if (!cals.length) { await kvSet('cache:ics', []); await kvSet('cache:calendar', { at: Date.now(), events: [] }); return []; }
   const texts = [], errors = [];
   for (const cal of cals) {
     try {
-      const res = await netFetch(cal.url.replace(/^webcal:/, 'https:'));
-      if (!res.ok) throw new Error(`returned ${res.status}`);
-      const text = await res.text();
+      const link = cal.url.replace(/^webcal:/, 'https:');
+      let text;
+      if (fetchVia) text = await fetchVia(link);
+      else { const res = await netFetch(link); if (!res.ok) throw new Error(`returned ${res.status}`); text = await res.text(); }
       if (!text.includes('BEGIN:VCALENDAR')) throw new Error('is not an iCal link');
       texts.push({ id: cal.id, name: cal.name, color: cal.color, text });
     } catch (e) {
+      if (e && e.code === 'NOPROXY') throw e;
       errors.push(`“${cal.name}” ${typeof e === 'string' ? e : e.message}`);
       const old = (await kvGet('cache:ics', [])).find((t) => t && t.id === cal.id);
       if (old) texts.push(old); // keep showing the last good copy
@@ -68,9 +70,9 @@ export async function syncCalendar() {
 }
 
 // Parse cached calendar text(s) for any date range (used by the month view).
-export function eventsBetween(texts, from, to) {
+export function eventsBetween(texts, from, to, { includeHidden = false } = {}) {
   const out = [];
-  const hidden = new Set(state.settings.hiddenCalendars || []);
+  const hidden = new Set(includeHidden ? [] : state.settings.hiddenCalendars || []);
   for (const t of texts || []) {
     if (typeof t === 'string') { out.push(...parseICS(t, { from, to })); continue; } // old cache format
     if (!t || hidden.has(t.id)) continue;

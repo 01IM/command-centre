@@ -346,7 +346,7 @@ dialog::backdrop { background: rgba(8, 8, 9, .55); backdrop-filter: blur(4px); }
 
 /* ---------- mobile ---------- */
 .tabs { display: none; }
-@media (max-width: 820px) {
+@media (max-width: 640px) {
   body { display: block; }
   .sidebar { display: none; }
   .content { margin: 0; padding: calc(14px + env(safe-area-inset-top)) 14px calc(90px + env(safe-area-inset-bottom)); }
@@ -385,7 +385,7 @@ dialog::backdrop { background: rgba(8, 8, 9, .55); backdrop-filter: blur(4px); }
   .cube-bar [data-new] { display: none; }
   .cube-bar.collapsed { grid-template-columns: 1fr auto; grid-template-areas: "scr toggle"; }
 }
-@media (min-width: 821px) and (max-width: 1180px) {
+@media (min-width: 641px) and (max-width: 1180px) {
   .cube-net-wrap { display: none; }
   .cube-bar { grid-template-columns: auto minmax(0, 1fr) auto auto auto; }
 }
@@ -438,7 +438,7 @@ dialog[open]::backdrop { animation: fadein .28s ease; }
 .mini-clock .pin { fill: var(--accent); }
 .world li.night .mini-clock .face { fill: #101014; }
 @media (max-width: 1250px) { .hero { flex-direction: column; align-items: flex-start; } .clocks { width: 100%; justify-content: space-between; } }
-@media (max-width: 820px) { .clocks { flex-direction: column; align-items: flex-start; gap: 12px; } .clock-main { align-items: flex-start; } .world { border: 0; padding: 0; flex-wrap: wrap; gap: 14px; } }
+@media (max-width: 640px) { .clocks { flex-direction: column; align-items: flex-start; gap: 12px; } .clock-main { align-items: flex-start; } .world { border: 0; padding: 0; flex-wrap: wrap; gap: 14px; } }
 
 /* =================== weather =================== */
 .weather-card { grid-column: span 2; }
@@ -468,7 +468,7 @@ dialog[open]::backdrop { animation: fadein .28s ease; }
 .hours li { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; }
 .hours b { font-weight: 500; }
 .weather-card.big .wx-week li { grid-template-columns: 70px 40px 44px 40px 1fr 40px; font-size: 14.5px; padding: 8px 0; }
-@media (max-width: 820px) { .hours { grid-template-columns: repeat(6, 1fr); } .hours li:nth-child(n+7) { display: none; } }
+@media (max-width: 640px) { .hours { grid-template-columns: repeat(6, 1fr); } .hours li:nth-child(n+7) { display: none; } }
 
 /* animated weather icon parts */
 .wx-svg { flex: none; overflow: visible; }
@@ -523,7 +523,7 @@ dialog[open]::backdrop { animation: fadein .28s ease; }
 .agenda h2 { font-family: var(--serif); text-transform: none; letter-spacing: 0; font-size: 20px; font-weight: 500; color: var(--text); }
 .agenda .events li { grid-template-columns: 70px 1fr auto; }
 @media (max-width: 1180px) { .cal-layout { grid-template-columns: 1fr; } }
-@media (max-width: 820px) {
+@media (max-width: 640px) {
   .cal-grid { grid-auto-rows: 64px; }
   .chip-ev { font-size: 0; padding: 0; height: 5px; border: 0; }
   .chip-ev i, .chip-ev .t { display: none; }
@@ -634,3 +634,86 @@ dialog[open]::backdrop { animation: fadein .28s ease; }
 .doc .thumb .count { position: absolute; right: 4px; bottom: 4px; font: 600 10px var(--sans); font-style: normal; background: rgba(0,0,0,.6); color: #fff; padding: 1px 5px; border-radius: 99px; }
 .exp-badge { position: absolute; left: 8px; top: 8px; font: 600 10.5px var(--sans); padding: 2px 8px; border-radius: 99px; background: rgba(0,0,0,.6); color: #fff; backdrop-filter: blur(4px); }
 .exp-badge.warn { background: rgba(217,165,74,.9); color: #1a1408; } .exp-badge.bad { background: rgba(217,112,95,.92); }
+
+
+/* =================== iPad (10th gen: 820×1180 portrait, 1180×820 landscape) — icon rail =================== */
+@media (min-width: 641px) and (max-width: 1100px) {
+  :root { --side: 76px; }
+  .sidebar { width: var(--side); padding: calc(18px + env(safe-area-inset-top)) 10px 18px; align-items: center; }
+  .brand { padding: 0 0 18px !important; justify-content: center; }
+  .brand > div, #nav a span, .sidebar-foot .made, .theme-toggle .t-label { display: none; }
+  #nav a { justify-content: center; padding: 12px; }
+  #nav a .ico { width: 21px; height: 21px; }
+  #nav a.active { box-shadow: inset 0 0 0 1px var(--line); }
+  .sidebar-foot { align-items: center; padding: 0; }
+  .theme-toggle { padding: 8px; }
+  .content { padding: calc(18px + env(safe-area-inset-top)) 22px calc(30px + env(safe-area-inset-bottom)); }
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .weather-card, .span2 { grid-column: span 2; }
+  .hero { flex-direction: column; align-items: flex-start; }
+  .clocks { width: 100%; justify-content: space-between; }
+  .cal-grid { grid-auto-rows: minmax(104px, auto); }
+  .chip-ev { font-size: 11px; }
+  .cube-timer { font-size: 30px; min-width: 130px; }
+  .files-layout { grid-template-columns: 200px minmax(0, 1fr); }
+  .stat-row { grid-template-columns: repeat(4, 1fr); }
+}
+@media (min-width: 641px) and (max-width: 900px) {
+  .files-layout { grid-template-columns: 1fr; }
+  .cats { position: static; flex-direction: row; flex-wrap: wrap; }
+  .world { gap: 12px; }
+}
+
+/* =================== iPhone 16 Pro (402×874) =================== */
+@media (max-width: 640px) {
+  .content { padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); }
+  .page-head { gap: 10px; }
+  .page-head .actions { flex-wrap: wrap; }
+  .hero h1 { font-size: 25px; }
+  .world li { min-width: 0; }
+  .world .mini-clock { width: 32px; height: 32px; }
+  .cube-bar .cube-stats .last span { display: none; }
+  .cube-timer { font-size: 34px; padding: 16px; }
+  .wx-top { flex-direction: column; align-items: stretch; }
+  .wx-week li { grid-template-columns: 46px 30px 34px 30px 1fr 30px; gap: 6px; font-size: 13px; }
+  .prayers li { font-size: 10.5px; padding: 6px 0; }
+  .prayers li b { font-size: 12px; }
+  .prayers li b i { display: block; margin: 0; }
+  .agenda { margin-top: 0; }
+  .file-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .file-thumb { height: 96px; }
+  .doc-grid, .notes { grid-template-columns: 1fr; }
+  .stat strong { font-size: 26px; }
+  dialog { width: calc(100vw - 16px); max-height: calc(100vh - 40px - env(safe-area-inset-top)); overflow: auto; }
+  .quick-add input[type=date] { flex: 0 0 120px; }
+  .tabs a { font-size: 10px; }
+  .sidebar-foot { display: none; }
+}
+/* touch devices: no hover-only controls */
+@media (hover: none) {
+  .file-actions { opacity: 1; transform: none; }
+  .tasks li .icon-btn.sm { opacity: 1; }
+  .card:hover, .file:hover { transform: none; }
+}
+/* PWA standalone on iOS: room for the status bar / Dynamic Island */
+@media (display-mode: standalone) and (max-width: 640px) {
+  .content { padding-top: calc(8px + env(safe-area-inset-top)); }
+}
+
+.badge.bad { color: var(--bad); border-color: rgba(217,112,95,.5); }
+.made-m { text-align: center; margin-top: 22px; }
+#syncStatus small { margin-left: 6px; }
+@media (max-width: 640px) {
+  .world { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: 100%; }
+  .world li { gap: 6px; }
+  .world .mini-clock { width: 26px; height: 26px; }
+  .world b { font-size: 13px; }
+  .world small { font-size: 11px; }
+  .clock { font-size: 38px; }
+}
+@media (max-width: 640px) {
+  .cal-chips .chip-ev { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--cal, var(--accent)); }
+  .cal-chips .chip-ev.plan { background: var(--ok); } .cal-chips .chip-ev.plan.family { background: var(--accent); } .cal-chips .chip-ev.plan.travel { background: var(--info); }
+  .cal-cell { padding: 6px 4px; align-items: center; }
+  .cal-chips { justify-content: center; }
+}

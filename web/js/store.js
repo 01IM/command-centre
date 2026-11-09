@@ -110,11 +110,12 @@ export async function replaceCollection(collection, arr, silent = false) {
   if (!silent) emit({ type: 'data', collection });
 }
 
-export async function setSetting(key, value) {
+export async function setSetting(key, value, { silent = false, at = Date.now() } = {}) {
   state.settings[key] = value;
   state.settings.updatedAt = Date.now();
+  state.settings._ts = { ...(state.settings._ts || {}), [key]: at }; // per-setting change time (for sync)
   await kvSet('settings', state.settings);
-  emit({ type: 'settings', key });
+  if (!silent) emit({ type: 'settings', key });
 }
 
 // Merge two copies of a collection: newest updatedAt wins per item.

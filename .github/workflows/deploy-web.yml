@@ -1,0 +1,25 @@
+name: Publish iPhone / iPad version
+
+# Publishes the web/ folder to GitHub Pages (free hosting) on every push to main.
+# The phone and tablet open it at https://01im.github.io/command-centre/ and add it to the home screen.
+on:
+  push:
+    branches: [main]
+    paths: ['web/**', '.github/workflows/deploy-web.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./web
+          force_orphan: true
+          enable_jekyll: false

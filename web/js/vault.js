@@ -71,7 +71,7 @@ export async function moveFile(rel, person, category) {
   await kvSet('vault:index', (await kvGet('vault:index', [])).map((e) => (e.path === rel ? { ...e, path: target } : e)));
 }
 
-export async function vaultRoot() { return isApp() ? invoke('vault_root') : 'Browser storage (development)'; }
+export async function vaultRoot() { return isApp() ? invoke('vault_root') : 'this device (and your encrypted sync, if it’s on)'; }
 
 export async function thumbnailURL(rel) {
   if (!/\.(png|jpe?g|webp|gif)$/i.test(rel)) return null;
@@ -81,4 +81,20 @@ export async function thumbnailURL(rel) {
   }
   const blob = await fileGet('vault:' + rel);
   return blob ? URL.createObjectURL(blob) : null;
+}
+
+// ----- used by sync -----
+export async function readFile(rel) {
+  if (isApp()) return new Uint8Array(await invoke('vault_read', { path: rel }));
+  const blob = await fileGet('vault:' + rel);
+  if (!blob) throw new Error('File not found');
+  return new Uint8Array(await blob.arrayBuffer());
+}
+// Write to an exact path (overwrites). Used when a file arrives from another device.
+export async function writeFileAt(rel, bytes, mime = '') {
+  if (isApp()) return invoke('vault_write', bytes, { headers: { 'x-path': encodeURIComponent(rel) } });
+  await fileSet('vault:' + rel, new Blob([bytes], { type: mime }));
+  const idx = (await kvGet('vault:index', [])).filter((e) => e.path !== rel);
+  idx.push({ path: rel, size: bytes.length, modified: Date.now(), is_dir: false });
+  await kvSet('vault:index', idx);
 }
