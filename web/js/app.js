@@ -548,6 +548,9 @@ const VIEW_RENDER = {
       ${card('Microsoft To Do (optional)', `<p class="muted">Your to-do list already works inside the app. Connect this only if you also want tasks from the Microsoft To Do app to show up.</p>
         <form data-form="ms-settings" class="stack"><label><span>Application (client) ID</span><input name="msClientId" value="${esc(state.settings.msClientId || '')}" placeholder="00000000-0000-0000-0000-000000000000"></label>
         <div class="row">${badge(ms)}<span class="spacer"></span><button class="btn ghost sm" type="submit">Save</button>${ms !== 'disconnected' ? '<button type="button" class="btn ghost sm" data-disconnect="microsoft">Disconnect</button>' : ''}<button type="button" class="btn primary sm" data-connect="microsoft">${ms === 'connected' ? 'Reconnect' : 'Connect'}</button></div></form>`)}
+      ${card('Appearance', `<form data-form="appearance" class="stack">
+        <label><span>Theme</span><select name="theme">${[['system', 'Match Windows'], ['dark', 'Dark'], ['light', 'Light']].map(([v, l]) => `<option value="${v}" ${themePref() === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <div class="row"><button type="button" class="btn ghost sm" data-avatar-change>Change profile picture</button><button type="button" class="btn ghost sm" data-avatar-remove>Remove picture</button><span class="spacer"></span><button class="btn primary sm">Save</button></div></form>`)}
       ${card('Location', `<form data-form="location" class="stack"><label><span>Name</span><input name="name" value="${esc(l.name)}"></label><div class="row2"><label><span>Latitude</span><input name="lat" type="number" step="0.0001" value="${l.lat}"></label><label><span>Longitude</span><input name="lon" type="number" step="0.0001" value="${l.lon}"></label></div><div class="row"><button type="button" class="btn ghost sm" data-reset-loc>Kuwait City</button><span class="spacer"></span><button class="btn primary sm">Save</button></div></form><small class="muted">Used for prayer times (Kuwait method) and weather. Units: °C, km/h.</small>`)}
       ${card('Notifications', `<form data-form="notify" class="stack">
         <label class="toggle"><input type="checkbox" name="notifyMeetings" ${state.settings.notifyMeetings !== false ? 'checked' : ''}><span>Alert 10 minutes before meetings</span></label>
@@ -826,6 +829,8 @@ function bindView(root) {
       if (ds.editTask) { const lt = list('localTasks').find((x) => x.id === ds.editTask); return taskForm(lt); }
       if (ds.refresh) { t.classList.add('spin'); await refresh(ds.refresh, true); t.classList.remove('spin'); return; }
       if (ds.join) return joinMeeting(ds.join);
+      if (ds.avatarChange !== undefined) return pickAvatar();
+      if (ds.avatarRemove !== undefined) { await kvSet('profilePhoto', null); await loadAvatar(); return toast('Picture removed', 'ok'); }
       // ----- files vault -----
       if (ds.person) { filesView.person = ds.person; filesView.q = ''; filesView.category = 'All'; return doRender(false, true); }
       if (ds.cat) { filesView.category = ds.cat; filesView.q = ''; return doRender(false, true); }
@@ -920,6 +925,8 @@ function bindView(root) {
       } else if (kind === 'checkpoint') {
         if (!v.title.trim()) return; const g = list('goals').find((x) => x.id === form.dataset.goal);
         await upsert('goals', { ...g, checkpoints: [...(g.checkpoints || []), { title: v.title.trim(), date: v.date, done: false }] });
+      } else if (kind === 'appearance') {
+        await setTheme(v.theme); toast('Saved', 'ok');
       } else if (kind === 'calendar') {
         await setSetting('calendarLinks', v.calendarLinks.trim()); toast('Saved — loading calendar…', 'ok'); await refresh('calendar', true);
       } else if (kind === 'google-settings') {
@@ -1061,6 +1068,40 @@ function liveUpdate() {
   if (!prayerRefreshing && cache.prayer?.next && now > cache.prayer.next.time) { prayerRefreshing = true; refresh('prayer').finally(() => { prayerRefreshing = false; }); }
 }
 
+// ---------- appearance: theme + profile picture ----------
+const mql = matchMedia('(prefers-color-scheme: light)');
+function themePref() { try { return localStorage.getItem('cc-theme') || 'system'; } catch { return state.settings.theme || 'system'; } }
+function applyTheme() {
+  const pref = themePref();
+  const resolved = pref === 'system' ? (mql.matches ? 'light' : 'dark') : pref;
+  document.documentElement.dataset.theme = resolved;
+  const lbl = $('#themeToggle .t-label'); if (lbl) lbl.textContent = resolved === 'dark' ? 'Dark' : 'Light';
+}
+async function setTheme(pref) {
+  try { localStorage.setItem('cc-theme', pref); } catch { /* ignore */ }
+  await setSetting('theme', pref);
+  applyTheme();
+}
+mql.addEventListener?.('change', () => { if (themePref() === 'system') applyTheme(); });
+
+async function loadAvatar() {
+  const btn = $('#avatar'); if (!btn) return;
+  const photo = await kvGet('profilePhoto');
+  btn.style.backgroundImage = photo ? `url("${photo}")` : '';
+  btn.classList.toggle('has-photo', !!photo);
+}
+async function pickAvatar() {
+  const f = await pickFile('image/*'); if (!f) return;
+  try {
+    const img = await createImageBitmap(f);
+    const size = 320, side = Math.min(img.width, img.height);
+    const c = document.createElement('canvas'); c.width = c.height = size;
+    c.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
+    await kvSet('profilePhoto', c.toDataURL('image/jpeg', 0.88));
+    await loadAvatar(); toast('Profile picture updated', 'ok');
+  } catch { toast('That image format isn’t supported — try a JPG or PNG', 'error'); }
+}
+
 // ---------- startup ----------
 async function start() {
   await S.loadState();
@@ -1068,6 +1109,9 @@ async function start() {
     for (const s of DEFAULT_SEASONS) await upsert('seasons', s);
     await setSetting('owSeasonsSeeded', true);
   }
+  applyTheme(); loadAvatar();
+  $('#avatar').onclick = pickAvatar;
+  $('#themeToggle').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
   await loadCaches();
   mountCube($('#cube'));
   addEventListener('hashchange', route);
