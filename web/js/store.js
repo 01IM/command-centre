@@ -62,7 +62,7 @@ export async function fileKeys() {
 }
 
 // ---------- app state ----------
-export const COLLECTIONS = ['plans', 'goals', 'docs', 'trips', 'notes', 'seasons', 'localTasks'];
+export const COLLECTIONS = ['plans', 'goals', 'docs', 'trips', 'notes', 'seasons', 'localTasks', 'flights'];
 
 export const state = {
   data: Object.fromEntries(COLLECTIONS.map((c) => [c, []])),
@@ -133,8 +133,8 @@ export function snapshot() {
 
 // Settings that are safe and useful to carry between devices (no tokens).
 export function publicSettings() {
-  const { googleClientId, msClientId, location, notifyMeetings, notifyDocs, prayerMethod, owSeasonsSeeded, updatedAt } = state.settings;
-  return { googleClientId, msClientId, location, notifyMeetings, notifyDocs, prayerMethod, owSeasonsSeeded, updatedAt };
+  const { googleClientId, msClientId, location, notifyMeetings, notifyDocs, prayerMethod, owSeasonsSeeded, people, calendarLinks, updatedAt } = state.settings;
+  return { googleClientId, msClientId, location, notifyMeetings, notifyDocs, prayerMethod, owSeasonsSeeded, people, calendarLinks, updatedAt };
 }
 
 export async function importSnapshot(snap, { merge = true } = {}) {
