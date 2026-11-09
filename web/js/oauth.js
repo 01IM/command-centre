@@ -53,7 +53,7 @@ export async function signIn(provider, { clientId, clientSecret, scopes }) {
   const { url, redirectUri } = await loopbackSignIn((redirect) => `${p.authUrl}?${new URLSearchParams({
     client_id: clientId, response_type: 'code', redirect_uri: redirect, scope: scopes.join(' '),
     code_challenge: challenge, code_challenge_method: 'S256', state: stateVal, ...p.extraAuth,
-  })}`);
+  })}`, provider === 'microsoft' ? 'localhost' : '127.0.0.1');
   const params = new URL(url, 'http://127.0.0.1').searchParams;
   if (params.get('error')) throw new Error(`Sign-in cancelled (${params.get('error')})`);
   if (params.get('state') !== stateVal) throw new Error('Sign-in failed: state mismatch');

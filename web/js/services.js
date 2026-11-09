@@ -68,15 +68,17 @@ export const wmo = (code) => WMO[code] || ['—', '🌡️'];
 export async function getWeather({ force = false } = {}) {
   const { lat, lon } = loc();
   const cached = await kvGet('weather');
-  if (!force && cached && cached.lat === lat && Date.now() - cached.at < 30 * 60 * 1000) return cached;
+  if (!force && cached && cached.v === 2 && cached.lat === lat && Date.now() - cached.at < 30 * 60 * 1000) return cached;
   try {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-      '&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m' +
-      '&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset&timezone=auto&forecast_days=5&wind_speed_unit=kmh';
+      '&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day' +
+      '&hourly=temperature_2m,weather_code,precipitation_probability,is_day' +
+      '&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max,uv_index_max,wind_speed_10m_max' +
+      '&timezone=auto&forecast_days=7&wind_speed_unit=kmh';
     const res = await netFetch(url);
     if (!res.ok) throw new Error('Weather unavailable');
     const json = await res.json();
-    const data = { at: Date.now(), lat, current: json.current, daily: json.daily };
+    const data = { at: Date.now(), lat, v: 2, current: json.current, hourly: json.hourly, daily: json.daily };
     await kvSet('weather', data);
     return data;
   } catch (e) {
