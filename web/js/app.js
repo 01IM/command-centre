@@ -49,6 +49,9 @@ function countdown(ms) {
 const relDays = (n) => n === 0 ? 'today' : n === 1 ? 'tomorrow' : n === -1 ? 'yesterday' : n > 0 ? `in ${n} days` : `${-n} days ago`;
 const minsToHM = (m) => m == null ? '—' : `${Math.floor(m / 60)}h ${String(Math.round(m % 60)).padStart(2, '0')}m`;
 
+// Tauri reports errors as plain strings; browsers as Error objects.
+const errText = (e) => (typeof e === 'string' ? e : e?.message || String(e));
+
 // ---------- toast ----------
 function toast(msg, kind = '') {
   const el = document.createElement('div');
@@ -87,7 +90,7 @@ function openForm({ title, fields, submitLabel = 'Save', onSubmit, onDelete }) {
     const fd = new FormData(form);
     const values = {};
     for (const f of fields) values[f.name] = f.type === 'file' ? fd.getAll(f.name).filter((x) => x.size) : (fd.get(f.name) ?? '').toString().trim();
-    try { await onSubmit(values); dlg.close(); } catch (err) { toast(err.message, 'error'); }
+    try { await onSubmit(values); dlg.close(); } catch (err) { toast(errText(err), 'error'); }
   });
   $('[data-act=cancel]', form).onclick = () => dlg.close();
   if (onDelete) $('[data-act=delete]', form).onclick = async () => { if (confirmInline(form)) { await onDelete(); dlg.close(); } };
@@ -442,7 +445,7 @@ const VIEW_RENDER = {
     const ppl = people();
     if (!filesView.person || !ppl.includes(filesView.person)) filesView.person = ppl[0];
     let all = [];
-    try { all = await V.listFiles(); } catch (e) { return card('Files', empty('Could not open the vault folder: ' + e.message)); }
+    try { all = await V.listFiles(); } catch (e) { return `<div class="page-head"><h1>Files</h1></div>` + card('Files', empty('Could not open the vault folder: ' + errText(e))); }
     const mine = all.filter((f) => f.person === filesView.person);
     const counts = Object.fromEntries(V.CATEGORIES.map((c) => [c, mine.filter((f) => f.category === c).length]));
     const extraCats = [...new Set(mine.map((f) => f.category).filter((c) => c && !V.CATEGORIES.includes(c)))];
@@ -717,7 +720,7 @@ function seasonForm(s = {}) {
 
 async function addFiles(person, category, files) {
   let n = 0;
-  for (const f of files) { try { await V.saveFile(person, category, f); n++; } catch (e) { toast(`${f.name}: ${e.message || e}`, 'error'); } }
+  for (const f of files) { try { await V.saveFile(person, category, f); n++; } catch (e) { toast(`${f.name}: ${errText(e)}`, 'error'); } }
   if (n) toast(`Added ${n} file${n === 1 ? '' : 's'} to ${person} · ${category}`, 'ok');
   filesView.person = person; filesView.category = category; filesView.q = '';
   return doRender(false, true);
@@ -899,7 +902,7 @@ function bindView(root) {
         }
         return toast(`Imported ${added} trips`, 'ok');
       }
-    } catch (err) { toast(err.message, 'error'); }
+    } catch (err) { toast(errText(err), 'error'); }
   };
 
   root.onsubmit = async (e) => {
@@ -930,7 +933,7 @@ function bindView(root) {
         if (!isApp() && 'Notification' in window && Notification.permission === 'default') await Notification.requestPermission();
         toast('Saved', 'ok'); render();
       }
-    } catch (err) { toast(err.message, 'error'); }
+    } catch (err) { toast(errText(err), 'error'); }
   };
 
   // files: live search, drag & drop, thumbnails
@@ -979,19 +982,19 @@ async function refresh(what, manual = false) {
     if (what === 'calendar') {
       if (!state.settings.calendarLinks) return;
       const before = JSON.stringify(cache.calendar?.events || []);
-      try { await I.syncCalendar(); cache.calendarError = null; } catch (e) { cache.calendarError = navigator.onLine ? e.message : null; throw e; }
+      try { await I.syncCalendar(); cache.calendarError = null; } catch (e) { cache.calendarError = navigator.onLine ? errText(e) : null; throw e; }
       cache.calendar = await kvGet('cache:calendar');
       if (!manual && current !== 'schedule' && before === JSON.stringify(cache.calendar.events)) { LAST[what] = Date.now(); return; }
     }
     if (what === 'todo') { if (await I.connectionStatus('microsoft') === 'disconnected') return; await I.syncTodo(); cache.todo = await kvGet('cache:todo'); }
     if (what === 'health') { if (await I.connectionStatus('google') === 'disconnected') return; await I.syncHealth(); cache.health = await kvGet('cache:health'); }
-    if (what === 'weather') { cache.weather = await getWeather({ force: manual }).catch((e) => ({ error: e.message })); }
-    if (what === 'prayer') { cache.prayer = await getPrayerSchedule().catch((e) => ({ error: e.message })); }
+    if (what === 'weather') { cache.weather = await getWeather({ force: manual }).catch((e) => ({ error: errText(e) })); }
+    if (what === 'prayer') { cache.prayer = await getPrayerSchedule().catch((e) => ({ error: errText(e) })); }
     LAST[what] = Date.now();
     if (manual) toast('Updated', 'ok');
   } catch (e) {
     if (e.code === 'AUTH') { if (manual) toast('Please reconnect your account', 'error'); }
-    else if (manual) toast(e.message, 'error');
+    else if (manual) toast(errText(e), 'error');
     else console.warn(what, e);
   }
   render();
