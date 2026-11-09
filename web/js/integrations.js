@@ -1,6 +1,6 @@
 // Calendar (private iCal link), Fitbit Air sleep + heart rate (Google Health) and Microsoft
 // To Do (optional). Every result is cached locally so the dashboard still works offline.
-import { state, kvSet } from './store.js';
+import { state, kvSet, kvGet } from './store.js';
 import { authFetch, signIn, connectionStatus } from './oauth.js';
 import { netFetch } from './net.js';
 import { parseICS } from './ical.js';
@@ -33,29 +33,49 @@ async function json(res) {
 }
 
 // ---------------- Calendar (Google Calendar private iCal link — no sign-in needed) ----------------
+export const CAL_COLORS = ['#c9a96b', '#7ea6d8', '#7fb38d', '#d9705f', '#a49be0', '#e0874f', '#5fb8b0', '#d68fb8'];
+// [{ id, name, url, color }]. Older versions stored plain links in `calendarLinks`.
+export function calendars() {
+  if (Array.isArray(state.settings.calendars)) return state.settings.calendars;
+  return (state.settings.calendarLinks || '').split(/\s+/).filter((l) => /^(https?|webcal):\/\//.test(l))
+    .map((url, i) => ({ id: 'c' + i, name: i === 0 ? 'Personal' : 'Calendar ' + (i + 1), url, color: CAL_COLORS[i % CAL_COLORS.length] }));
+}
+
 export async function syncCalendar() {
-  const links = (state.settings.calendarLinks || '').split(/\s+/).filter((l) => /^(https?|webcal):\/\//.test(l));
-  if (!links.length) return [];
-  const texts = [];
-  for (const link of links) {
-    const res = await netFetch(link.replace(/^webcal:/, 'https:'));
-    if (!res.ok) throw new Error(`Calendar link returned ${res.status} — check it in Settings`);
-    const text = await res.text();
-    if (!text.includes('BEGIN:VCALENDAR')) throw new Error('That link is not an iCal calendar — copy the “Secret address in iCal format”');
-    texts.push(text);
+  const cals = calendars();
+  if (!cals.length) { await kvSet('cache:ics', []); await kvSet('cache:calendar', { at: Date.now(), events: [] }); return []; }
+  const texts = [], errors = [];
+  for (const cal of cals) {
+    try {
+      const res = await netFetch(cal.url.replace(/^webcal:/, 'https:'));
+      if (!res.ok) throw new Error(`returned ${res.status}`);
+      const text = await res.text();
+      if (!text.includes('BEGIN:VCALENDAR')) throw new Error('is not an iCal link');
+      texts.push({ id: cal.id, name: cal.name, color: cal.color, text });
+    } catch (e) {
+      errors.push(`“${cal.name}” ${typeof e === 'string' ? e : e.message}`);
+      const old = (await kvGet('cache:ics', [])).find((t) => t && t.id === cal.id);
+      if (old) texts.push(old); // keep showing the last good copy
+    }
   }
   await kvSet('cache:ics', texts);
   const from = new Date(); from.setHours(0, 0, 0, 0);
   const to = new Date(from); to.setDate(to.getDate() + 15);
   const events = eventsBetween(texts, from, to);
   await kvSet('cache:calendar', { at: Date.now(), events });
+  if (errors.length) throw new Error('Calendar ' + errors.join(', ') + ' — check the link in Settings');
   return events;
 }
 
 // Parse cached calendar text(s) for any date range (used by the month view).
 export function eventsBetween(texts, from, to) {
   const out = [];
-  for (const t of texts || []) out.push(...parseICS(t, { from, to }));
+  const hidden = new Set(state.settings.hiddenCalendars || []);
+  for (const t of texts || []) {
+    if (typeof t === 'string') { out.push(...parseICS(t, { from, to })); continue; } // old cache format
+    if (!t || hidden.has(t.id)) continue;
+    out.push(...parseICS(t.text, { from, to, calendarName: t.name }).map((e) => ({ ...e, id: t.id + ':' + e.id, calendar: t.name, color: t.color, calId: t.id })));
+  }
   const seen = new Set();
   return out.filter((e) => (seen.has(e.id) ? false : seen.add(e.id))).sort((a, b) => new Date(a.start) - new Date(b.start));
 }

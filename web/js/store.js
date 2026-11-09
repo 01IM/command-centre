@@ -133,8 +133,8 @@ export function snapshot() {
 
 // Settings that are safe and useful to carry between devices (no tokens).
 export function publicSettings() {
-  const { googleClientId, msClientId, location, notifyMeetings, notifyDocs, prayerMethod, owSeasonsSeeded, people, calendarLinks, updatedAt } = state.settings;
-  return { googleClientId, msClientId, location, notifyMeetings, notifyDocs, prayerMethod, owSeasonsSeeded, people, calendarLinks, updatedAt };
+  const { googleClientId, msClientId, location, notifyMeetings, notifyDocs, prayerMethod, owSeasonsSeeded, people, calendarLinks, calendars, hiddenCalendars, theme, updatedAt } = state.settings;
+  return { googleClientId, msClientId, location, notifyMeetings, notifyDocs, prayerMethod, owSeasonsSeeded, people, calendarLinks, calendars, hiddenCalendars, theme, updatedAt };
 }
 
 export async function importSnapshot(snap, { merge = true } = {}) {

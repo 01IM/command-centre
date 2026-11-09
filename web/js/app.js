@@ -85,6 +85,8 @@ function openForm({ title, fields, submitLabel = 'Save', onSubmit, onDelete }) {
     </div>
   </form>`;
   const form = $('form', dlg);
+  const np = form.querySelector('[name=newPerson]');
+  if (np) { const sel = form.querySelector('[name=person]'); const sync = () => { np.closest('label').style.display = sel.value === '__new__' ? '' : 'none'; if (sel.value === '__new__') np.focus(); }; sel.onchange = sync; sync(); }
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const fd = new FormData(form);
@@ -207,7 +209,7 @@ function connectCta(provider, what) {
 
 async function meetingsBlock({ days = 1, max = 6 } = {}) {
   const evs = cache.calendar?.events || [];
-  if (!state.settings.calendarLinks) return `<div class="connect"><p>Paste your Google Calendar's private link to see your Zoom, Teams and Meet calls.</p><a class="btn primary sm" href="#settings">Add link</a></div>`;
+  if (!I.calendars().length) return `<div class="connect"><p>Add your calendars (Google, Plot.it…) to see your Zoom, Teams and Meet calls.</p><a class="btn primary sm" href="#settings">Add calendar</a></div>`;
   const now = new Date();
   const until = startOfDay(); until.setDate(until.getDate() + days);
   const items = evs.filter((e) => new Date(e.end) > now && new Date(e.start) < until).slice(0, max);
@@ -218,7 +220,7 @@ async function meetingsBlock({ days = 1, max = 6 } = {}) {
     const soon = !live && new Date(e.start) - now < 15 * 60000;
     return `<li class="${live ? 'live' : ''}">
       <div class="when">${e.allDay ? 'All day' : fmtTime(e.start)}${days > 1 ? `<small>${fmtDay(e.start)}</small>` : ''}</div>
-      <div class="what"><b>${esc(e.title)}</b><small>${e.platform ? `<span class="pill ${e.platform.toLowerCase()}">${e.platform}</span>` : ''}${esc(e.calendar || '')}</small></div>
+      <div class="what"><b>${esc(e.title)}</b><small>${e.platform ? `<span class="pill ${e.platform.toLowerCase()}">${e.platform}</span>` : ''}${e.color ? `<i class="cal-dot" style="background:${esc(e.color)}"></i>` : ''}${esc(e.calendar || '')}</small></div>
       ${e.join ? `<button class="btn ${live || soon ? 'primary' : 'ghost'} sm" data-join="${esc(e.join)}">${live ? 'Join now' : 'Join'}</button>` : ''}
     </li>`;
   }).join('')}</ul>`;
@@ -395,7 +397,7 @@ const VIEW_RENDER = {
       const d = new Date(gridStart); d.setDate(gridStart.getDate() + i);
       const key = ymd(d); const items = byDay.get(key) || [];
       const chips = items.slice(0, 3).map((x) => x.kind === 'meeting'
-        ? `<span class="chip-ev ${x.e.allDay ? 'allday' : ''} ${x.e.platform ? 'has-join' : ''}" title="${esc(x.e.title)}">${x.e.allDay ? '' : `<i>${fmtTime(x.e.start)}${x.e.platform ? ' · ' + x.e.platform : ''}</i>`}<span class="t">${esc(x.e.title)}</span></span>`
+        ? `<span class="chip-ev ${x.e.allDay ? 'allday' : ''}" style="--cal:${esc(x.e.color || 'var(--accent)')}" title="${esc(x.e.title)}${x.e.calendar ? ' · ' + esc(x.e.calendar) : ''}">${x.e.allDay ? '' : `<i>${fmtTime(x.e.start)}${x.e.platform ? ' · ' + x.e.platform : ''}</i>`}<span class="t">${esc(x.e.title)}</span></span>`
         : `<span class="chip-ev plan ${esc(x.p.type || 'other')}" title="${esc(x.p.title)}">${x.p.time ? `<i>${fmtTime(new Date(x.p.date + 'T' + x.p.time))}</i>` : ''}<span class="t">${esc(x.p.title)}</span></span>`).join('');
       cells.push(`<button class="cal-cell ${d.getMonth() !== view.m ? 'out' : ''} ${key === todayKey ? 'today' : ''} ${key === sel ? 'sel' : ''} ${d.getDay() === 5 || d.getDay() === 6 ? 'wknd' : ''}" data-day="${key}">
         <span class="dnum">${d.getDate()}</span><div class="cal-chips">${chips}${items.length > 3 ? `<span class="more-ev">+${items.length - 3} more</span>` : ''}</div></button>`);
@@ -408,7 +410,7 @@ const VIEW_RENDER = {
     return `<div class="page-head"><h1>${monthName}</h1><div class="actions">
         <div class="seg"><button class="btn ghost" data-cal="-1" aria-label="Previous month">‹</button><button class="btn ghost" data-cal="0">Today</button><button class="btn ghost" data-cal="1" aria-label="Next month">›</button></div>
         <button class="btn ghost" data-refresh="calendar" title="Refresh">↻</button><button class="btn primary" data-add="plan" data-date="${sel}">+ Add plan</button></div></div>
-      ${!state.settings.calendarLinks ? `<section class="card banner"><div class="connect"><p>Add your Google Calendar's private link in Settings to see your meetings in this calendar.</p><a class="btn primary sm" href="#settings">Settings</a></div></section>` : ''}
+      ${!I.calendars().length ? `<section class="card banner"><div class="connect"><p>Add your calendars in Settings (e.g. Personal and Plot.it) to see all your meetings here.</p><a class="btn primary sm" href="#settings">Settings</a></div></section>` : `<div class="cal-legend">${I.calendars().map((c) => `<button class="legend ${(state.settings.hiddenCalendars || []).includes(c.id) ? 'off' : ''}" data-cal-toggle="${esc(c.id)}" title="Show / hide"><i style="background:${esc(c.color)}"></i>${esc(c.name)}</button>`).join('')}<span class="legend plans"><i></i>Your plans</span></div>`}
       <div class="cal-layout">
         <section class="card cal"><div class="cal-head">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => `<span>${d}</span>`).join('')}</div><div class="cal-grid">${cells.join('')}</div></section>
         <section class="card agenda"><header><h2>${sel === todayKey ? 'Today' : fmtDay(sel)}</h2><small>${relDays(daysUntil(sel))}</small></header>${agenda}</section>
@@ -454,6 +456,7 @@ const VIEW_RENDER = {
       .sort((a, b) => b.modified - a.modified);
     const typeOf = (n) => { const e = (n.split('.').pop() || '').toLowerCase(); return /^(png|jpe?g|webp|gif|heic)$/.test(e) ? 'img' : e === 'pdf' ? 'pdf' : /^(docx?|odt|rtf|txt)$/.test(e) ? 'doc' : /^(xlsx?|csv)$/.test(e) ? 'xls' : 'file'; };
     const root = await V.vaultRoot();
+    const expiryOf = new Map(); for (const d of list('docs')) for (const p of docFiles(d)) if (d.expiry) expiryOf.set(p, d);
     return `<div class="page-head"><h1>Files</h1><div class="actions"><button class="btn ghost" data-vault-reveal="">Open folder</button><button class="btn primary" data-vault-upload>+ Add files</button></div></div>
       <div class="people-tabs">${ppl.map((p) => `<button class="person ${p === filesView.person && !q ? 'on' : ''}" data-person="${esc(p)}"><span class="avatar">${esc(p.slice(0, 1).toUpperCase())}</span>${esc(p)}<small>${all.filter((f) => f.person === p).length}</small></button>`).join('')}<button class="person add" data-add-person>+ Add family member</button></div>
       <div class="files-layout">
@@ -465,7 +468,7 @@ const VIEW_RENDER = {
           <div class="files-toolbar"><input type="search" placeholder="Search all files…" value="${esc(filesView.q)}" data-files-search><small class="muted">${q ? `${shown.length} result${shown.length === 1 ? '' : 's'} across everyone` : `${esc(filesView.person)} · ${esc(filesView.category === 'All' ? 'All files' : filesView.category)}`}</small></div>
           ${shown.length ? `<div class="file-grid">${shown.map((f) => `<article class="file" data-file="${esc(f.path)}" title="${esc(f.path)}">
               <div class="file-thumb ${typeOf(f.name)}" data-file-thumb="${esc(f.path)}"><span>${typeOf(f.name) === 'img' ? '' : esc((f.name.split('.').pop() || '').toUpperCase().slice(0, 4))}</span></div>
-              <div class="file-info"><b>${esc(f.name)}</b><small>${q ? esc(f.person) + ' · ' : ''}${esc(f.category || '—')} · ${fmtSize(f.size)} · ${fmtDate(f.modified, { day: 'numeric', month: 'short', year: 'numeric' })}</small></div>
+              ${expiryOf.has(f.path) ? (() => { const d = expiryOf.get(f.path); const n = daysUntil(d.expiry); return `<span class="exp-badge ${n < 0 ? 'bad' : n <= 90 ? 'warn' : ''}" title="${esc(d.name)}">${n < 0 ? 'Expired' : 'Expires'} ${fmtDate(d.expiry, { day: 'numeric', month: 'short', year: 'numeric' })}</span>`; })() : ''}<div class="file-info"><b>${esc(f.name)}</b><small>${q ? esc(f.person) + ' · ' : ''}${esc(f.category || '—')} · ${fmtSize(f.size)} · ${fmtDate(f.modified, { day: 'numeric', month: 'short', year: 'numeric' })}</small></div>
               <div class="file-actions"><button class="icon-btn" data-vault-open="${esc(f.path)}" title="Open">↗</button><button class="icon-btn" data-vault-reveal="${esc(f.path)}" title="Show in folder">⌕</button><button class="icon-btn" data-vault-move="${esc(f.path)}" title="Move">⇄</button><button class="icon-btn danger" data-vault-del="${esc(f.path)}" title="Delete">✕</button></div>
             </article>`).join('')}</div>` : `<div class="drop-empty"><svg viewBox="0 0 24 24" class="ico big"><path d="M12 16V4 M7 9l5-5 5 5 M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg><p>${q ? 'No files match your search.' : 'Drag files here, or click <b>Add files</b>.'}</p><small>Passport copies, visas, civil IDs, CVs, interview documents — anything you need to find quickly.</small></div>`}
           <div class="drop-overlay"><span>Drop to add to ${esc(filesView.person)} · ${esc(filesView.category === 'All' ? 'Other' : filesView.category)}</span></div>
@@ -486,7 +489,7 @@ const VIEW_RENDER = {
     }).join('');
     return `<div class="page-head"><h1>Expiry dates</h1><div class="actions"><button class="btn primary" data-add="doc">+ Add document</button></div></div>
       <p class="muted">Passports, IDs, visas and licences for you and your family. You'll get reminders 90, 30 and 7 days before anything expires. Keep the scans themselves in <a class="link" href="#files">Files</a>.</p>
-      ${ppl.length > 1 ? `<div class="people-tabs small">${['All', ...ppl].map((p) => `<button class="person ${p === pf ? 'on' : ''}" data-doc-person="${esc(p)}">${esc(p)}</button>`).join('')}</div>` : ''}
+      <div class="people-tabs small">${['All', ...ppl].map((p) => `<button class="person ${p === pf ? 'on' : ''}" data-doc-person="${esc(p)}">${esc(p)}</button>`).join('')}<button class="person add" data-add-person>+ Add family member</button></div>
       ${docs.length ? sections : card('Nothing added yet', empty('Add your passport, Kuwait civil ID, e-visas, visa stickers and driving licence. You can attach a photo or scan of each.', ' <button class="link" data-add="doc">Add the first one</button>'))}`;
   },
 
@@ -538,9 +541,10 @@ const VIEW_RENDER = {
     const calAt = cache.calendar?.at;
     return `<div class="page-head"><h1>Settings</h1></div>
     <div class="grid">
-      ${card('Calendar (meetings)', `<p class="muted">In Google Calendar on the web: Settings → your calendar → <b>Integrate calendar</b> → copy <b>Secret address in iCal format</b> and paste it here. Add more than one link (e.g. work and personal) on separate lines.</p>
-        <form data-form="calendar" class="stack"><label><span>Private iCal link(s)</span><textarea name="calendarLinks" rows="3" placeholder="https://calendar.google.com/calendar/ical/…/private-…/basic.ics">${esc(state.settings.calendarLinks || '')}</textarea><small>Treat this link like a password — anyone with it can read your calendar.</small></label>
-        <div class="row">${calAt ? `<small class="muted">Last updated ${fmtTime(calAt)}${cache.calendar?.events ? ' · ' + cache.calendar.events.length + ' events in the next 2 weeks' : ''}</small>` : ''}<span class="spacer"></span><button class="btn primary sm">Save</button></div></form>`)}
+      ${card('Calendars', `<p class="muted">Add each calendar you want to see — e.g. your Google calendar and your Plot.it work calendar. They're all merged into one view, each in its own colour.</p>
+        <ul class="cal-list">${I.calendars().map((c) => `<li><i style="background:${esc(c.color)}"></i><div><b>${esc(c.name)}</b><small>${esc(c.url.replace(/^(https?:\/\/[^/]+).*/, '$1/…'))}</small></div><button class="icon-btn" data-cal-edit="${esc(c.id)}" title="Edit">✎</button></li>`).join('') || '<li class="empty">No calendars yet.</li>'}</ul>
+        <div class="row">${calAt ? `<small class="muted">Updated ${fmtTime(calAt)}</small>` : ''}<span class="spacer"></span><button class="btn primary sm" data-cal-add>+ Add calendar</button></div>
+        <details class="howto"><summary>Where do I find the link?</summary><p><b>Google Calendar:</b> calendar.google.com → ⚙ Settings → click the calendar under “Settings for my calendars” → Integrate calendar → copy <b>Secret address in iCal format</b>.</p><p><b>Outlook / Microsoft 365 (work):</b> outlook.office.com → ⚙ Settings → Calendar → Shared calendars → Publish a calendar → choose the calendar and “Can view all details” → Publish → copy the <b>ICS</b> link.</p><p>Treat these links like passwords — anyone with one can read that calendar.</p></details>`)}
       ${card('Fitbit Air — sleep & heart rate', `<p class="muted">Needs a free Google Cloud “Desktop app” client (10-minute setup, see the guide). Your health data goes straight from Google to this computer.</p>
         <form data-form="google-settings" class="stack"><label><span>Client ID</span><input name="googleClientId" value="${esc(state.settings.googleClientId || '')}" placeholder="xxxx.apps.googleusercontent.com"></label>
         <label><span>Client secret</span><input name="googleClientSecret" type="password" value="${esc(state.settings.googleClientSecret || '')}" placeholder="GOCSPX-…"><small>Stays on this computer only.</small></label>
@@ -604,7 +608,7 @@ function flightsView(tabs) {
 function docCard(d) {
   const cls = d.days == null ? '' : d.days < 0 ? 'expired' : d.days <= 30 ? 'urgent' : d.days <= 90 ? 'soon' : 'ok';
   return `<article class="doc ${cls}" data-edit-doc="${d.id}">
-    <div class="thumb" data-thumb="${esc((d.images || [])[0] || '')}">${(d.images || []).length ? '' : '<span>▤</span>'}</div>
+    <div class="thumb" data-doc-thumb="${esc(docFiles(d)[0] || '')}">${docFiles(d).length ? `<span>${esc((docFiles(d)[0].split('.').pop() || '').toUpperCase())}</span>` : '<span>▤</span>'}${docFiles(d).length > 1 ? `<em class="count">${docFiles(d).length}</em>` : ''}</div>
     <div class="info"><b>${esc(d.name)}</b><small>${people().length > 1 ? esc(d.person || people()[0]) + ' · ' : ''}${esc(d.type)}${d.country ? ' · ' + esc(d.country) : ''}${d.entries ? ' · ' + esc(d.entries) : ''}</small>
     ${d.expiry ? `<span class="exp">${d.days < 0 ? 'Expired' : 'Expires'} ${fmtDate(d.expiry)} <em>${relDays(d.days)}</em></span>` : '<span class="exp">No expiry</span>'}
     ${d.stay ? `<small>Max stay: ${esc(d.stay)}</small>` : ''}</div></article>`;
@@ -663,33 +667,64 @@ async function compressImage(file, maxDim = 1800) {
   return new Promise((r) => c.toBlob(r, 'image/jpeg', 0.85));
 }
 
-function docForm(d = {}) {
+const DOC_FOLDER = { 'Passport': 'Passport & ID', 'Civil ID': 'Civil ID & Residency', 'Residence permit': 'Civil ID & Residency', 'E-visa': 'Visas', 'Visa sticker': 'Visas', 'Driving licence': 'Passport & ID', 'Insurance': 'Finance', 'Other': 'Other' };
+const docFiles = (d) => d.files || [];
+
+async function docForm(d = {}) {
+  const vaultFiles = await V.listFiles().catch(() => []);
+  const linked = new Set(docFiles(d));
+  const choices = [['', '— none —'], ...vaultFiles.filter((f) => !linked.has(f.path)).map((f) => [f.path, `${f.person} › ${f.category} › ${f.name}`])];
   openForm({
     title: d.id ? 'Edit document' : 'Add document',
     fields: [
       { name: 'name', label: 'Name', required: true, value: d.name, placeholder: 'e.g. UK e-Visa, Pakistan passport', wide: true },
-      { name: 'person', label: 'Belongs to', type: 'select', options: people(), value: d.person || people()[0] },
-      { name: 'type', label: 'Type', type: 'select', options: ['Passport', 'Civil ID', 'E-visa', 'Visa sticker', 'Residence permit', 'Driving licence', 'Insurance', 'Other'], value: d.type || 'Passport' },
+      { name: 'person', label: 'Belongs to', type: 'select', options: [...people().map((p) => [p, p]), ['__new__', '+ Add family member…']], value: d.person || (docsPerson !== 'All' ? docsPerson : people()[0]) },
+      { name: 'newPerson', label: 'New family member’s name', placeholder: 'Only if you picked “+ Add family member”' },
+      { name: 'type', label: 'Type', type: 'select', options: Object.keys(DOC_FOLDER), value: d.type || 'Passport' },
       { name: 'country', label: 'Country', value: d.country, wide: true },
       { name: 'issued', label: 'Issue date', type: 'date', value: d.issued },
       { name: 'expiry', label: 'Expiry date', type: 'date', value: d.expiry },
       { name: 'entries', label: 'Entries (visas)', type: 'select', options: ['', 'Single entry', 'Double entry', 'Multiple entry'], value: d.entries || '' },
       { name: 'stay', label: 'Max stay (visas)', value: d.stay, placeholder: 'e.g. 90 days per visit' },
       { name: 'ref', label: 'Reference (last 4 digits only)', value: d.ref, placeholder: 'e.g. …4417', hint: 'Avoid full document numbers.' },
-      { name: 'files', label: d.images?.length ? `Replace scan/photo (${d.images.length} attached)` : 'Scan or photo (optional)', type: 'file', accept: 'image/*,application/pdf', multiple: true, wide: true },
+      { name: 'files', label: linked.size ? `Add more scans (${linked.size} attached)` : 'Upload scan or photo (saved to Files)', type: 'file', accept: 'image/*,application/pdf', multiple: true, wide: true },
+      { name: 'link', label: 'Or link a file already in Files', type: 'select', options: choices, value: '', wide: true },
+      ...(linked.size ? [{ name: 'unlink', label: 'Attached files', type: 'select', options: [['', `Keep all ${linked.size}`], ...[...linked].map((p) => [p, 'Detach ' + p.split('/').pop()])], value: '', wide: true, hint: 'Detaching keeps the file in Files.' }] : []),
       { name: 'notes', label: 'Notes', type: 'textarea', rows: 2, value: d.notes, wide: true },
     ],
     onSubmit: async (v) => {
-      let images = d.images || [];
-      if (v.files.length) {
-        images = [];
-        for (const f of v.files) { const key = 'doc-' + S.uid() + (f.type === 'application/pdf' ? '.pdf' : '.jpg'); await S.fileSet(key, await compressImage(f)); images.push(key); }
+      if (v.person === '__new__') {
+        const name = v.newPerson.replace(/[<>:"/\\|?*]/g, '').trim();
+        if (!name) throw new Error('Type the new family member’s name');
+        if (!people().some((p) => p.toLowerCase() === name.toLowerCase())) await setSetting('people', [...people(), name]);
+        v.person = people().find((p) => p.toLowerCase() === name.toLowerCase());
       }
-      const { files, ...rest } = v;
-      await upsert('docs', { ...d, ...rest, images });
+      delete v.newPerson;
+      const files = docFiles(d).filter((p) => p !== v.unlink);
+      for (const f of v.files) files.push(await V.saveFile(v.person, DOC_FOLDER[v.type] || 'Other', f));
+      if (v.link && !files.includes(v.link)) files.push(v.link);
+      const { files: _f, link, unlink, ...rest } = v;
+      await upsert('docs', { ...d, ...rest, files, images: [] });
+      if (v.files.length) toast(`Saved to Files › ${v.person} › ${DOC_FOLDER[v.type] || 'Other'}`, 'ok');
     },
     onDelete: d.id ? () => remove('docs', d.id) : null,
   });
+}
+
+// One-time move of scans attached in older versions (kept inside the app) into the Files vault.
+async function migrateDocImages() {
+  for (const d of list('docs')) {
+    if (!d.images?.length) continue;
+    const files = [...docFiles(d)];
+    for (const key of d.images) {
+      const blob = await S.fileGet(key).catch(() => null);
+      if (!blob) continue;
+      const ext = key.endsWith('.pdf') ? '.pdf' : '.jpg';
+      const name = `${d.name}${d.images.length > 1 ? ' ' + (files.length + 1) : ''}${ext}`.replace(/[<>:"/\\|?*]/g, '_');
+      try { files.push(await V.saveFile(d.person || people()[0], DOC_FOLDER[d.type] || 'Other', new File([blob], name, { type: blob.type || (ext === '.pdf' ? 'application/pdf' : 'image/jpeg') }))); } catch (e) { console.warn('migrate', e); continue; }
+    }
+    await upsert('docs', { ...d, files, images: [] });
+  }
 }
 
 function tripForm(t = {}) {
@@ -768,6 +803,29 @@ function personForm() {
   });
 }
 
+function calendarForm(c = {}) {
+  const used = I.calendars().map((x) => x.color);
+  const color = c.color || I.CAL_COLORS.find((x) => !used.includes(x)) || I.CAL_COLORS[0];
+  openForm({
+    title: c.id ? 'Edit calendar' : 'Add calendar',
+    fields: [
+      { name: 'name', label: 'Name', required: true, value: c.name || (I.calendars().length ? 'Plot.it' : 'Personal'), placeholder: 'Personal, Plot.it…' },
+      { name: 'color', label: 'Colour', type: 'select', options: I.CAL_COLORS.map((x, i) => [x, ['Gold', 'Blue', 'Green', 'Red', 'Lilac', 'Orange', 'Teal', 'Pink'][i]]), value: color },
+      { name: 'url', label: 'iCal / ICS link', required: true, value: c.url, wide: true, placeholder: 'https://calendar.google.com/calendar/ical/…/basic.ics', hint: 'Google: “Secret address in iCal format”. Outlook: Publish a calendar → ICS link.' },
+    ],
+    onSubmit: async (v) => {
+      if (!/^(https?|webcal):\/\//i.test(v.url)) throw new Error('That doesn’t look like a link — it should start with https://');
+      const list = I.calendars().filter((x) => x.id !== c.id);
+      const item = { id: c.id || 'cal' + Date.now().toString(36), name: v.name, url: v.url.trim(), color: v.color };
+      const idx = I.calendars().findIndex((x) => x.id === c.id);
+      if (idx >= 0) list.splice(idx, 0, item); else list.push(item);
+      await setSetting('calendars', list);
+      toast('Saved — loading calendar…', 'ok'); refresh('calendar', true);
+    },
+    onDelete: c.id ? async () => { await setSetting('calendars', I.calendars().filter((x) => x.id !== c.id)); refresh('calendar', true); } : null,
+  });
+}
+
 function taskForm(t) {
   openForm({ title: 'Edit task', fields: [
       { name: 'title', label: 'Task', required: true, value: t.title, wide: true },
@@ -830,6 +888,9 @@ function bindView(root) {
       if (ds.refresh) { t.classList.add('spin'); await refresh(ds.refresh, true); t.classList.remove('spin'); return; }
       if (ds.join) return joinMeeting(ds.join);
       if (ds.avatarChange !== undefined) return pickAvatar();
+      if (ds.calAdd !== undefined) return calendarForm();
+      if (ds.calEdit) return calendarForm(I.calendars().find((c) => c.id === ds.calEdit));
+      if (ds.calToggle) { const h = new Set(state.settings.hiddenCalendars || []); h.has(ds.calToggle) ? h.delete(ds.calToggle) : h.add(ds.calToggle); await setSetting('hiddenCalendars', [...h]); cache.calendar = { ...cache.calendar, events: I.eventsBetween(await kvGet('cache:ics', []), startOfDay(), new Date(Date.now() + 15 * 86400000)) }; return doRender(false, true); }
       if (ds.avatarRemove !== undefined) { await kvSet('profilePhoto', null); await loadAvatar(); return toast('Picture removed', 'ok'); }
       // ----- files vault -----
       if (ds.person) { filesView.person = ds.person; filesView.q = ''; filesView.category = 'All'; return doRender(false, true); }
@@ -849,12 +910,12 @@ function bindView(root) {
       if (ds.day) { calView.sel = ds.day; const d = D(ds.day); if (d.getMonth() !== calView.m) { calView.y = d.getFullYear(); calView.m = d.getMonth(); return doRender(true); } return render(); }
       if (ds.add === 'plan') return planForm(ds.date ? { date: ds.date } : {});
       if (ds.add === 'goal') return goalForm();
-      if (ds.add === 'doc') return docForm();
+      if (ds.add === 'doc') return await docForm();
       if (ds.add === 'trip') return tripForm();
       if (ds.add === 'season') return seasonForm();
       if (ds.editPlan) return planForm(list('plans').find((x) => x.id === ds.editPlan));
       if (ds.editGoal) return goalForm(list('goals').find((x) => x.id === ds.editGoal));
-      if (ds.editDoc) return docForm(list('docs').find((x) => x.id === ds.editDoc));
+      if (ds.editDoc) return await docForm(list('docs').find((x) => x.id === ds.editDoc));
       if (ds.editTrip) return tripForm(list('trips').find((x) => x.id === ds.editTrip));
       if (ds.editSeason) return seasonForm(list('seasons').find((x) => x.id === ds.editSeason));
       if (ds.editNote) return noteForm(list('notes').find((x) => x.id === ds.editNote));
@@ -971,14 +1032,12 @@ function bindView(root) {
   });
 
   // load document thumbnails from IndexedDB
-  $$('[data-thumb]', root).forEach(async (el) => {
-    const key = el.dataset.thumb; if (!key) return;
-    const blob = await S.fileGet(key);
-    if (!blob) { el.innerHTML = '<span title="Syncing">⟳</span>'; return; }
-    if (key.endsWith('.pdf')) { el.innerHTML = '<span>PDF</span>'; el.onclick = (ev) => { ev.stopPropagation(); window.open(URL.createObjectURL(blob)); }; return; }
-    const url = URL.createObjectURL(blob);
-    el.style.backgroundImage = `url(${url})`;
-    el.onclick = (ev) => { ev.stopPropagation(); const v = $('#viewer'); v.innerHTML = `<img src="${url}"><button class="btn ghost" onclick="this.closest('dialog').close()">Close</button>`; v.showModal(); };
+  $$('[data-doc-thumb]', root).forEach(async (el) => {
+    const path = el.dataset.docThumb; if (!path) return;
+    const url = await V.thumbnailURL(path).catch(() => null);
+    if (url) { el.style.backgroundImage = `url("${url}")`; el.querySelector('span')?.remove(); }
+    el.title = 'Open file';
+    el.onclick = (ev) => { ev.stopPropagation(); V.openFile(path); };
   });
 }
 
@@ -987,7 +1046,7 @@ const LAST = {};
 async function refresh(what, manual = false) {
   try {
     if (what === 'calendar') {
-      if (!state.settings.calendarLinks) return;
+      if (!I.calendars().length) return;
       const before = JSON.stringify(cache.calendar?.events || []);
       try { await I.syncCalendar(); cache.calendarError = null; } catch (e) { cache.calendarError = navigator.onLine ? errText(e) : null; throw e; }
       cache.calendar = await kvGet('cache:calendar');
@@ -1110,6 +1169,7 @@ async function start() {
     await setSetting('owSeasonsSeeded', true);
   }
   applyTheme(); loadAvatar();
+  migrateDocImages().catch((e) => console.warn(e));
   $('#avatar').onclick = pickAvatar;
   $('#themeToggle').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
   await loadCaches();
