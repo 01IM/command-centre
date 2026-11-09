@@ -28,17 +28,51 @@ export function wxIcon(code, isDay = true, size = 48) {
 }
 
 // ---------- moon ----------
-const SYNODIC = 29.530588853;
-const KNOWN_NEW = Date.UTC(2000, 0, 6, 18, 14); // reference new moon
+// Exact phase times from Jean Meeus, "Astronomical Algorithms" ch. 49 (accurate to a few minutes).
+const rad = (d) => (d * Math.PI) / 180;
+function phaseTime(k) { // k = integer (+0 new, +.25 first quarter, +.5 full, +.75 last quarter)
+  const T = k / 1236.85, T2 = T * T, T3 = T2 * T, T4 = T3 * T;
+  let jde = 2451550.09766 + 29.530588861 * k + 0.00015437 * T2 - 0.00000015 * T3 + 0.00000000073 * T4;
+  const E = 1 - 0.002516 * T - 0.0000074 * T2;
+  const M = rad(2.5534 + 29.1053567 * k - 0.0000014 * T2 - 0.00000011 * T3);
+  const Mp = rad(201.5643 + 385.81693528 * k + 0.0107582 * T2 + 0.00001238 * T3 - 0.000000058 * T4);
+  const F = rad(160.7108 + 390.67050284 * k - 0.0016118 * T2 - 0.00000227 * T3 + 0.000000011 * T4);
+  const O = rad(124.7746 - 1.56375588 * k + 0.0020672 * T2 + 0.00000215 * T3);
+  const sin = Math.sin, cos = Math.cos, frac = ((k % 1) + 1) % 1;
+  let c;
+  if (frac === 0 || frac === 0.5) {
+    const n = frac === 0;
+    c = (n ? -0.4072 : -0.40614) * sin(Mp) + (n ? 0.17241 : 0.17302) * E * sin(M) + (n ? 0.01608 : 0.01614) * sin(2 * Mp)
+      + (n ? 0.01039 : 0.01043) * sin(2 * F) + (n ? 0.00739 : 0.00734) * E * sin(Mp - M) - (n ? 0.00514 : 0.00515) * E * sin(Mp + M)
+      + (n ? 0.00208 : 0.00209) * E * E * sin(2 * M) - 0.00111 * sin(Mp - 2 * F) - 0.00057 * sin(Mp + 2 * F) + 0.00056 * E * sin(2 * Mp + M)
+      - 0.00042 * sin(3 * Mp) + 0.00042 * E * sin(M + 2 * F) + 0.00038 * E * sin(M - 2 * F) - 0.00024 * E * sin(2 * Mp - M) - 0.00017 * sin(O);
+  } else {
+    c = -0.62801 * sin(Mp) + 0.17172 * E * sin(M) - 0.01183 * E * sin(Mp + M) + 0.00862 * sin(2 * Mp) + 0.00804 * sin(2 * F)
+      + 0.00454 * E * sin(Mp - M) + 0.00204 * E * E * sin(2 * M) - 0.0018 * sin(Mp - 2 * F) - 0.0007 * sin(Mp + 2 * F) - 0.0004 * sin(3 * Mp)
+      - 0.00034 * E * sin(2 * Mp - M) + 0.00032 * E * sin(M + 2 * F) + 0.00032 * E * sin(M - 2 * F) - 0.00028 * E * E * sin(Mp + 2 * M)
+      + 0.00027 * E * sin(2 * Mp + M) - 0.00017 * sin(O);
+    const W = 0.00306 - 0.00038 * E * cos(M) + 0.00026 * cos(Mp) - 0.00002 * cos(Mp - M) + 0.00002 * cos(Mp + M) + 0.00002 * cos(2 * F);
+    c += frac === 0.25 ? W : -W;
+  }
+  return (jde + c - 2440587.5) * 86400000 - 69000; // TT → UTC (ΔT ≈ 69 s)
+}
 export function moonInfo(date = new Date()) {
-  const days = (date.getTime() - KNOWN_NEW) / 86400000;
-  const age = ((days % SYNODIC) + SYNODIC) % SYNODIC; // 0..29.53
-  const phase = age / SYNODIC; // 0 new, .5 full
+  const now = date.getTime();
+  const years = (now - Date.UTC(2000, 0, 1)) / (365.25 * 86400000);
+  const base = Math.floor(years * 12.3685) - 2;
+  const events = [];
+  for (let k = base; k < base + 5; k++) for (const q of [0, 0.25, 0.5, 0.75]) events.push({ q, t: phaseTime(k + q) });
+  events.sort((a, b) => a.t - b.t);
+  const i = events.findIndex((e) => e.t > now);
+  const prev = events[i - 1], next = events[i];
+  // phase 0..1 (0 = new, .5 = full), interpolated between the exact quarter instants
+  const phase = (prev.q + 0.25 * ((now - prev.t) / (next.t - prev.t))) % 1;
   const illum = (1 - Math.cos(2 * Math.PI * phase)) / 2;
   const names = ['New moon', 'Waxing crescent', 'First quarter', 'Waxing gibbous', 'Full moon', 'Waning gibbous', 'Last quarter', 'Waning crescent'];
-  const name = names[Math.floor(((phase * 8) + 0.5) % 8)];
-  const nextIn = (target) => { let d = (target * SYNODIC) - age; if (d <= 0.2) d += SYNODIC; return new Date(date.getTime() + d * 86400000); };
-  return { age, phase, illum, name, nextFull: nextIn(0.5), nextNew: nextIn(1) };
+  const name = names[Math.floor((phase * 8 + 0.5) % 8)];
+  const upcoming = (q) => new Date(events.find((e) => e.t > now && e.q === q).t);
+  const lastNew = [...events].reverse().find((e) => e.t <= now && e.q === 0);
+  return { phase, illum, name, age: lastNew ? (now - lastNew.t) / 86400000 : 0, nextFull: upcoming(0.5), nextNew: upcoming(0) };
 }
 export function moonSVG(phase, size = 56) {
   // Lit part = semicircle on the lit side + an ellipse (terminator) that grows/shrinks.
