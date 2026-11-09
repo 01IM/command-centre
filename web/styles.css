@@ -568,3 +568,23 @@ dialog[open]::backdrop { animation: fadein .28s ease; }
 .unit { font: 14px var(--sans); color: var(--text-3); font-style: normal; margin-left: 2px; }
 .table.flights td small.route-cities { display: block; color: var(--text-3); }
 .table.flights tr { cursor: default; }
+
+/* =================== HP Victus 15 (1920×1080 @125% → 1536×864) and similar laptop screens =================== */
+@media (min-width: 1200px) and (max-height: 920px) {
+  .content { padding: 16px 28px 40px; }
+  .cube-bar { padding: 9px 14px; margin-bottom: 18px; gap: 16px; }
+  .cube-scramble code { font-size: 14px; }
+  .cube-timer { font-size: 30px; padding: 8px 12px; min-width: 138px; }
+  .cube-net { width: 92px; }
+  .hero { margin: 0 0 16px; }
+  .hero h1 { font-size: 30px; }
+  .clock { font-size: 40px; }
+  .grid { gap: 16px; }
+  .card { padding: 16px 18px; }
+  .card > header { margin-bottom: 10px; }
+  .events li { padding: 9px 0; }
+  .wx-week li { padding: 4px 0; }
+  .page-head { margin-bottom: 16px; }
+  .cal-grid { grid-auto-rows: minmax(116px, auto); }
+}
+.quick-add input[type=date] { flex: 0 0 132px; padding-left: 8px; padding-right: 6px; font-size: 12.5px; color: var(--text-2); }

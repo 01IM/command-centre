@@ -12,14 +12,15 @@
       {
         "label": "main",
         "title": "Command Centre",
-        "width": 1440,
-        "height": 920,
-        "minWidth": 420,
+        "width": 1536,
+        "height": 824,
+        "minWidth": 900,
         "minHeight": 600,
         "center": true,
         "visible": false,
         "dragDropEnabled": false,
-        "backgroundThrottling": "disabled"
+        "backgroundThrottling": "disabled",
+        "maximized": true
       }
     ],
     "security": {
