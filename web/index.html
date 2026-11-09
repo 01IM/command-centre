@@ -8,13 +8,20 @@
   <meta name="theme-color" content="#0f0f10" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#f6f3ec" media="(prefers-color-scheme: light)">
   <link rel="icon" href="icons/icon-192.png">
+  <script>try{var t=localStorage.getItem("cc-theme");if(t&&t!=="system")document.documentElement.dataset.theme=t;}catch(e){}</script>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <aside class="sidebar">
-    <div class="brand"><span class="mark">IA</span><div><b>Command Centre</b><small>Imran M. Ali</small></div></div>
+    <div class="brand">
+      <button class="avatar-btn" id="avatar" title="Change profile picture"><span class="initials">IA</span><span class="edit">Change</span></button>
+      <div><b><i class="orb-dot"></i>Command Centre</b><small>Imran M. Ali</small></div>
+    </div>
     <nav id="nav"></nav>
-    <div class="sidebar-foot"><small>Runs on this PC · your data stays here</small></div>
+    <div class="sidebar-foot">
+      <button class="theme-toggle" id="themeToggle" title="Switch dark / light"><span class="t-ico"></span><span class="t-label">Dark</span></button>
+      <small class="made">Made for Imran by Claude</small>
+    </div>
   </aside>
   <div class="content">
     <div id="cube"></div>
