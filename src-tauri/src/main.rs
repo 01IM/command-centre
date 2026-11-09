@@ -149,13 +149,41 @@ fn notify(app: AppHandle, title: String, body: String) -> Result<(), String> {
 
 // ---------------- File vault: Documents\Command Centre Vault ----------------
 fn vault_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .document_dir()
-        .map_err(|e| e.to_string())?
-        .join("Command Centre Vault");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir)
+    static DIR: OnceLock<PathBuf> = OnceLock::new();
+    if let Some(d) = DIR.get() {
+        return Ok(d.clone());
+    }
+    // Preferred: Documents\Command Centre Vault. If Windows blocks that (e.g. Controlled folder
+    // access / ransomware protection, or a OneDrive-redirected folder that isn't available),
+    // fall back to the app's own data folder so the vault always works.
+    let usable = |dir: &Path| -> bool {
+        if std::fs::create_dir_all(dir).is_err() {
+            return false;
+        }
+        let probe = dir.join(".write-test");
+        let ok = std::fs::write(&probe, b"ok").is_ok();
+        let _ = std::fs::remove_file(&probe);
+        ok
+    };
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Ok(docs) = app.path().document_dir() {
+        candidates.push(docs.join("Command Centre Vault"));
+    }
+    if let Ok(home) = app.path().home_dir() {
+        candidates.push(home.join("Command Centre Vault"));
+    }
+    if let Ok(data) = app.path().app_data_dir() {
+        candidates.push(data.join("Vault"));
+    }
+    let mut errors = Vec::new();
+    for c in candidates {
+        if usable(&c) {
+            let _ = DIR.set(c.clone());
+            return Ok(c);
+        }
+        errors.push(c.display().to_string());
+    }
+    Err(format!("Windows didn't allow creating the vault folder (tried: {})", errors.join("; ")))
 }
 
 /// Resolve a relative vault path safely (no "..", no absolute paths).
