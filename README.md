@@ -2,7 +2,7 @@
 
 Imran's personal dashboard for Windows. It runs on its own: no Claude, no subscriptions, no server.
 
-**What's on it:** a 3×3 scramble and timer · today's meetings with one-click **Join** (Zoom / Teams / Meet) · Kuwait prayer times with a countdown · weather in °C · to-do list · plans (family, friends, travel) · goals with checkpoints · document and visa expiry reminders · travel history · Fitbit Air sleep and heart rate · Overwatch season countdown · quick notes.
+**What's on it:** a 3×3 scramble and timer · Kuwait time plus London, New York and Karachi clocks · a month calendar of your meetings and plans, with **Join** opening the Zoom/Teams app directly · Kuwait prayer times with a countdown · a 7-day forecast in °C with an hourly chart and moon phase · to-do list · goals with checkpoints · document and visa expiry reminders · travel history · Fitbit Air sleep and heart rate · Overwatch season countdown · quick notes.
 
 Your data stays on your PC (inside the app). Nothing personal is in this repository.
 
@@ -20,7 +20,9 @@ A new installer is built automatically on GitHub each time the code changes. To 
 
 1. Open **calendar.google.com** on a computer → ⚙ **Settings** → under *Settings for my calendars* click your calendar → **Integrate calendar**.
 2. Copy **Secret address in iCal format**.
-3. In Command Centre → **Settings → Calendar**, paste it and click **Save**. Zoom links in your events become **Join** buttons.
+3. In Command Centre → **Settings → Calendar**, paste it and click **Save**. Zoom links in your events become **Join** buttons that open the Zoom app straight into the meeting.
+
+The app checks your calendar every minute while it's open, and immediately when you switch back to it. Google itself can take a few minutes to publish a change to this link.
 
 To add a work calendar too, paste its link on a new line.
 
