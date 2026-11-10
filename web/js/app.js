@@ -166,7 +166,9 @@ async function doRender(entering, force = false) {
   rendering = true;
   try {
     const main = $('#main');
-    const html = await VIEW_RENDER[current]();
+    let html;
+    try { html = await VIEW_RENDER[current](); }
+    catch (e) { console.error(current, e); html = `<div class="page-head"><h1>Something went wrong</h1></div>${card('Details', `<p class="muted">This page couldn’t load: ${esc(errText(e))}</p><p><a class="btn ghost sm" href="#home">Go home</a></p>`)}`; }
     main.classList.toggle('enter', entering);
     main.innerHTML = html;
     if (entering) { void main.offsetWidth; requestAnimationFrame(() => main.classList.remove('enter')); }
@@ -206,6 +208,10 @@ function currentSeason() {
 }
 
 // ---------- cards ----------
+// Runs a card's content builder; if one card fails, only that card shows a note instead of a blank page.
+async function safe(fn, label) {
+  try { return await fn(); } catch (e) { console.error(label, e); return `<div class="empty">This section couldn’t load (${esc(errText(e)).slice(0, 80)}).</div>`; }
+}
 function card(title, body, { action = '', cls = '', link = '' } = {}) {
   return `<section class="card ${cls}"><header><h2>${link ? `<a href="#${link}">${esc(title)}</a>` : esc(title)}</h2>${action}</header>${body}</section>`;
 }
@@ -335,7 +341,7 @@ function sparkline(points, w = 300, h = 60) {
 
 async function healthBlock({ detail = false } = {}) {
   const status = await I.connectionStatus('google');
-  const h = cache.health;
+  const h = normaliseHealth(cache.health);
   if (!h) return status === 'connected' ? empty('Syncing sleep and heart rate…') : !isApp() ? empty(Sync.enabled() ? 'Connect Fitbit in the Windows app — your sleep and heart rate then sync here.' : 'Turn on sync in Settings to see your Fitbit data from the Windows app.') : connectCta('google', 'Show last night’s sleep and your heart rate from your Fitbit Air.');
   const last = h.sleep?.[0];
   const avg = h.sleep?.length ? Math.round(h.sleep.reduce((s, x) => s + (x.minutes || 0), 0) / h.sleep.length) : null;
@@ -357,6 +363,18 @@ async function healthBlock({ detail = false } = {}) {
   return html;
 }
 
+// Health data that arrived through sync has its dates as text; turn them back into dates.
+function normaliseHealth(h) {
+  if (!h) return h;
+  const d = (x) => (x == null ? x : x instanceof Date ? x : new Date(x));
+  return {
+    ...h,
+    sleep: (h.sleep || []).map((s) => ({ ...s, start: d(s.start), end: d(s.end) })).filter((s) => s.start && !isNaN(s.start)),
+    hr: (h.hr || []).map((x) => ({ ...x, t: d(x.t) })).filter((x) => x.t && !isNaN(x.t)),
+    resting: h.resting || [],
+  };
+}
+
 // ---------- views ----------
 const VIEW_RENDER = {
   async home() {
@@ -367,15 +385,15 @@ const VIEW_RENDER = {
       <div class="clocks"><div class="clock-main"><span class="clock" data-clock>${fmtTime(now)}</span><small>Kuwait</small></div>
       <ul class="world">${WORLD.map(([city, tz]) => `<li data-zone="${tz}">${clockFace(38)}<div><b data-zone-text>${zoneTime(tz, now).text}</b><small>${city}<em data-zone-day></em></small></div></li>`).join('')}</ul></div></div>
     <div class="grid home-grid">
-      ${card('Meetings today', await meetingsBlock(), { link: 'schedule', cls: 'span2', action: '<button class="icon-btn" data-refresh="calendar" title="Refresh">↻</button>' })}
-      ${!hasFeature('prayer') ? '' : card('Prayer times', prayerBlock(), { cls: 'prayer' })}
-      ${card('To-do', await todoBlock(), { link: 'tasks', action: '<button class="icon-btn" data-refresh="todo" title="Refresh">↻</button>' })}
-      ${!hasFeature('weather') ? '' : card('Weather', weatherBlock(), { link: 'weather', cls: 'weather-card', action: '<button class="icon-btn" data-refresh="weather" title="Refresh">↻</button>' })}
-      ${card('Plans', plansBlock(), { link: 'schedule', action: '<button class="icon-btn" data-add="plan" title="Add plan">+</button>' })}
-      ${card('Document expiry', docsAlertBlock(), { link: 'documents' })}
-      ${card('Sleep & heart rate', await healthBlock(), { link: 'health', action: '<button class="icon-btn" data-refresh="health" title="Refresh">↻</button>' })}
-      ${card('Goals', goalsBlock(), { link: 'goals', action: '<button class="icon-btn" data-add="goal" title="Add goal">+</button>' })}
-      ${card('Overwatch', overwatchBlock(), { cls: 'ow-card' })}
+      ${card('Meetings today', await safe(() => meetingsBlock(), 'meetings'), { link: 'schedule', cls: 'span2', action: '<button class="icon-btn" data-refresh="calendar" title="Refresh">↻</button>' })}
+      ${!hasFeature('prayer') ? '' : card('Prayer times', await safe(() => prayerBlock(), 'prayer'), { cls: 'prayer' })}
+      ${card('To-do', await safe(() => todoBlock(), 'todo'), { link: 'tasks', action: '<button class="icon-btn" data-refresh="todo" title="Refresh">↻</button>' })}
+      ${!hasFeature('weather') ? '' : card('Weather', await safe(() => weatherBlock(), 'weather'), { link: 'weather', cls: 'weather-card', action: '<button class="icon-btn" data-refresh="weather" title="Refresh">↻</button>' })}
+      ${card('Plans', await safe(() => plansBlock(), 'plans'), { link: 'schedule', action: '<button class="icon-btn" data-add="plan" title="Add plan">+</button>' })}
+      ${card('Document expiry', await safe(() => docsAlertBlock(), 'docs'), { link: 'documents' })}
+      ${card('Sleep & heart rate', await safe(() => healthBlock(), 'health'), { link: 'health', action: '<button class="icon-btn" data-refresh="health" title="Refresh">↻</button>' })}
+      ${card('Goals', await safe(() => goalsBlock(), 'goals'), { link: 'goals', action: '<button class="icon-btn" data-add="goal" title="Add goal">+</button>' })}
+      ${card('Overwatch', await safe(() => overwatchBlock(), 'overwatch'), { cls: 'ow-card' })}
       ${card('Quick note', `<form data-form="quicknote" class="quick-note"><textarea name="text" rows="3" placeholder="Jot something down…"></textarea><button class="btn primary sm">Save note</button></form>${(() => { const n = list('notes').sort((a, b) => b.updatedAt - a.updatedAt)[0]; return n ? `<a class="more" href="#notes">Last: ${esc(n.text.slice(0, 60))}${n.text.length > 60 ? '…' : ''}</a>` : ''; })()}`)}
     </div>`;
   },
