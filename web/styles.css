@@ -719,3 +719,12 @@ dialog[open]::backdrop { animation: fadein .28s ease; }
 }
 /* the cube timer isn't part of the phone version */
 body[data-device=phone] #cube { display: none; }
+
+/* iPhone / iPad: fade only — moving layers make Safari render text blurry */
+@media (hover: none), (max-width: 1100px) and (pointer: coarse) {
+  #main > *, .grid > *, .cal-layout > *, .card, .tasks li, .file, .cal-cell { transition: opacity .3s ease !important; transform: none !important; will-change: auto !important; }
+  #main.enter > *, #main.enter .grid > *, #main.enter .cal-grid > * { transform: none !important; }
+  .tabs { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--bg-2); }
+  .file-actions .icon-btn, .exp-badge { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  body { -webkit-text-size-adjust: 100%; text-rendering: optimizeLegibility; }
+}
