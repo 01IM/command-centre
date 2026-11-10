@@ -55,12 +55,14 @@ export async function syncCalendar(fetchVia = null) {
         if (!password) throw new Error('needs its password — open Settings → Calendars and edit it');
         const acct = { server: cal.url, user: cal.user, password, principal: cal.principal };
         let cols = await kvGet('caldav:cols:' + cal.id);
-        if (!cols?.length) { cols = await CalDAV.discover(acct); await kvSet('caldav:cols:' + cal.id, cols); }
+        const colsAt = (await kvGet('caldav:colsAt:' + cal.id)) || 0;
+        if (!cols?.length || Date.now() - colsAt > 6 * 3600000) { cols = await CalDAV.discover(acct); await kvSet('caldav:cols:' + cal.id, cols); await kvSet('caldav:colsAt:' + cal.id, Date.now()); }
         const from = new Date(Date.now() - 45 * 86400000), to = new Date(Date.now() + 120 * 86400000);
         let text;
         try { text = await CalDAV.fetchEvents(acct, cols, from, to); }
         catch (e) { cols = await CalDAV.discover(acct); await kvSet('caldav:cols:' + cal.id, cols); text = await CalDAV.fetchEvents(acct, cols, from, to); }
         texts.push({ id: cal.id, name: cal.name, color: cal.color, text });
+        await kvSet('cal:status:' + cal.id, { ok: true, at: Date.now(), count: (text.match(/BEGIN:VEVENT/g) || []).length, calendars: cols.map((c) => c.name) });
         continue;
       }
       const link = cal.url.replace(/^webcal:/, 'https:');
@@ -69,7 +71,9 @@ export async function syncCalendar(fetchVia = null) {
       else { const res = await netFetch(link); if (!res.ok) throw new Error(`returned ${res.status}`); text = await res.text(); }
       if (!text.includes('BEGIN:VCALENDAR')) throw new Error('is not an iCal link');
       texts.push({ id: cal.id, name: cal.name, color: cal.color, text });
+      await kvSet('cal:status:' + cal.id, { ok: true, at: Date.now(), count: (text.match(/BEGIN:VEVENT/g) || []).length });
     } catch (e) {
+      if (!(e && e.code === 'NOPROXY')) await kvSet('cal:status:' + cal.id, { ok: false, at: Date.now(), error: typeof e === 'string' ? e : e.message });
       if (e && e.code === 'NOPROXY') throw e;
       errors.push(`“${cal.name}” ${typeof e === 'string' ? e : e.message}`);
       const old = (await kvGet('cache:ics', [])).find((t) => t && t.id === cal.id);

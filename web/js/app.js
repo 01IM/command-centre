@@ -634,7 +634,7 @@ const VIEW_RENDER = {
     <div class="grid">
       ${syncCard}
       ${card('Calendars', `<p class="muted">Add each calendar you want to see — e.g. your Google calendar and your Plot.it work calendar. They're all merged into one view, each in its own colour.</p>
-        <ul class="cal-list">${I.calendars().map((c) => `<li><i style="background:${esc(c.color)}"></i><div><b>${esc(c.name)}</b><small>${c.type === 'caldav' ? esc(c.user + ' · ' + c.url.replace('https://', '')) : esc(c.url.replace(/^(https?:\/\/[^/]+).*/, '$1/…'))}</small></div><button class="icon-btn" data-cal-edit="${esc(c.id)}" title="Edit">✎</button></li>`).join('') || '<li class="empty">No calendars yet.</li>'}</ul>
+        <ul class="cal-list">${(await Promise.all(I.calendars().map(async (c) => ({ c, st: await kvGet('cal:status:' + c.id) })))).map(({ c, st }) => `<li><i style="background:${esc(c.color)}"></i><div><b>${esc(c.name)}</b>${st ? `<small class="${st.ok ? 'cal-ok' : 'cal-bad'}">${st.ok ? `✓ ${st.count} event${st.count === 1 ? '' : 's'} found · ${fmtTime(st.at)}${st.calendars ? ' · ' + esc(st.calendars.join(', ')) : ''}` : `⚠ ${esc(st.error || 'error')} · ${fmtTime(st.at)}`}</small>` : !isApp() && c.type === 'caldav' ? '<small>Synced from the Windows app</small>' : ''}<small>${c.type === 'caldav' ? esc(c.user + ' · ' + c.url.replace('https://', '')) : esc(c.url.replace(/^(https?:\/\/[^/]+).*/, '$1/…'))}</small></div><button class="icon-btn" data-cal-edit="${esc(c.id)}" title="Edit">✎</button></li>`).join('') || '<li class="empty">No calendars yet.</li>'}</ul>
         <div class="row">${calAt ? `<small class="muted">Updated ${fmtTime(calAt)}</small>` : ''}<span class="spacer"></span><button class="btn primary sm" data-cal-add>+ Add calendar</button></div>
         <details class="howto"><summary>Where do I find the link?</summary><p><b>Google Calendar:</b> calendar.google.com → ⚙ Settings → click the calendar under “Settings for my calendars” → Integrate calendar → copy <b>Secret address in iCal format</b>.</p><p><b>Outlook / Microsoft 365 (work):</b> outlook.office.com → ⚙ Settings → Calendar → Shared calendars → Publish a calendar → choose the calendar and “Can view all details” → Publish → copy the <b>ICS</b> link.</p><p>Treat these links like passwords — anyone with one can read that calendar.</p></details>`)}
       ${!isApp() ? card('Fitbit, Microsoft To Do & notifications', `<p class="muted">These are set up in the Windows app. With sync on, your Fitbit sleep and heart rate appear here too.</p>`) : ''}
@@ -711,7 +711,7 @@ function budgetPage() {
           <div class="bar"><i style="width:${pct}%"></i></div>
           <div class="row"><small>${pct >= 100 ? 'Ready to buy 🎉' : `${money(x.saved || 0)} saved · ${money(Math.max(0, (+x.amount || 0) - (+x.saved || 0)))} to go`}</small><button class="btn ghost sm" data-save-toward="${x.id}">+ Save</button></div></li>`; })()
         : `<li data-edit-budget="${x.id}"><div><b>${esc(x.name)}</b>${x.date || x.note ? `<small>${x.date ? fmtDate(x.date, { day: 'numeric', month: 'short' }) : ''}${x.date && x.note ? ' · ' : ''}${esc(x.note || '')}</small>` : ''}</div><span>${money(x.amount)}</span></li>`).join('')}</ul>`,
-      { action: `<button class="icon-btn" data-add="budget" data-kind="${tab}" data-cat="${esc(c.cat)}" title="Add to ${esc(c.cat)}">+</button>` })).join('')}</div>`;
+      { action: `<span class="card-actions"><button class="icon-btn" data-bud-rename="${esc(c.cat)}" data-kind="${tab}" title="Rename category">✎</button><button class="icon-btn" data-add="budget" data-kind="${tab}" data-cat="${esc(c.cat)}" title="Add to ${esc(c.cat)}">+</button></span>` })).join('')}</div>`;
 }
 
 function budgetForm(x = {}, { kind, cat } = {}) {
@@ -738,6 +738,17 @@ function budgetForm(x = {}, { kind, cat } = {}) {
   // show "saved so far" only for wishlist items
   const f = $('#modal form'); const sel = f.querySelector('[name=kind]'); const g = f.querySelector('[data-group=wish]');
   const syncW = () => { if (g) g.style.display = sel.value === 'wish' ? '' : 'none'; }; sel.addEventListener('change', syncW); syncW();
+}
+
+function renameCategoryForm(oldName, kind) {
+  openForm({ title: 'Rename category', submitLabel: 'Rename', fields: [
+      { name: 'name', label: 'New name', required: true, value: oldName, wide: true, hint: 'If another category already has this name, the two are merged.' }],
+    onSubmit: async (v) => {
+      const name = v.name.trim(); if (!name || name === oldName) return;
+      const items = list('budget').filter((x) => (x.kind || 'expense') === kind && ((x.category || 'Other').trim() || 'Other') === oldName);
+      for (const x of items) await upsert('budget', { ...x, category: name });
+      toast(`Renamed to ${name}`, 'ok');
+    } });
 }
 
 function saveTowardForm(x) {
@@ -1094,6 +1105,7 @@ function bindView(root) {
       if (ds.join) return joinMeeting(ds.join);
       if (ds.eye !== undefined) { amountsHidden = !amountsHidden; try { localStorage.setItem('cc-hide-amounts', amountsHidden ? '1' : '0'); } catch { /* ignore */ } return doRender(false, true); }
       if (ds.budTab) { budgetView.tab = ds.budTab; return doRender(false, true); }
+      if (ds.budRename) return renameCategoryForm(ds.budRename, ds.kind || budgetView.tab);
       if (ds.add === 'budget') return budgetForm({}, { kind: ds.kind || budgetView.tab, cat: ds.cat });
       if (ds.saveToward) { e.stopPropagation(); return saveTowardForm(list('budget').find((x) => x.id === ds.saveToward)); }
       if (ds.avatarChange !== undefined) return pickAvatar();

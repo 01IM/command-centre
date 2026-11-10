@@ -50,19 +50,33 @@ export async function discover({ server, user, password, principal }) {
   return out;
 }
 
+const blocksIn = (ics) => ics.match(/BEGIN:(VTIMEZONE|VEVENT)[\s\S]*?END:\1/g) || [];
+const dataIn = (doc) => [...doc.getElementsByTagNameNS(CAL, 'calendar-data')].flatMap((el) => blocksIn(el.textContent || ''));
+
 // Events between two dates from all the account's calendars, as one VCALENDAR text.
+// Servers differ (cPanel's included), so this tries, in order: a date-range query, a full query,
+// and finally listing every event file and downloading each one.
 export async function fetchEvents({ user, password }, collections, from, to) {
   const parts = [];
-  const body = `<?xml version="1.0" encoding="utf-8"?><c:calendar-query xmlns:d="DAV:" xmlns:c="${CAL}"><d:prop><c:calendar-data/></d:prop>
-    <c:filter><c:comp-filter name="VCALENDAR"><c:comp-filter name="VEVENT"><c:time-range start="${utc(from)}" end="${utc(to)}"/></c:comp-filter></c:comp-filter></c:filter></c:calendar-query>`;
+  const q = (filter) => `<?xml version="1.0" encoding="utf-8"?><c:calendar-query xmlns:d="DAV:" xmlns:c="${CAL}"><d:prop><d:getetag/><c:calendar-data/></d:prop><c:filter><c:comp-filter name="VCALENDAR">${filter}</c:comp-filter></c:filter></c:calendar-query>`;
+  const ranged = q(`<c:comp-filter name="VEVENT"><c:time-range start="${utc(from)}" end="${utc(to)}"/></c:comp-filter>`);
+  const all = q('<c:comp-filter name="VEVENT"/>');
   for (const col of collections) {
-    const doc = await dav('REPORT', col.url, { user, password, depth: 1, body });
-    for (const el of doc.getElementsByTagNameNS(CAL, 'calendar-data')) {
-      const ics = el.textContent || '';
-      // keep the time zones and events from each object
-      const blocks = ics.match(/BEGIN:(VTIMEZONE|VEVENT)[\s\S]*?END:\1/g) || [];
-      parts.push(...blocks);
+    let blocks = [];
+    try { blocks = dataIn(await dav('REPORT', col.url, { user, password, depth: 1, body: ranged })); } catch (e) { if (/rejected/.test(e.message)) throw e; }
+    if (!blocks.some((b) => b.startsWith('BEGIN:VEVENT'))) {
+      try { blocks = dataIn(await dav('REPORT', col.url, { user, password, depth: 1, body: all })); } catch (e) { if (/rejected/.test(e.message)) throw e; }
     }
+    if (!blocks.some((b) => b.startsWith('BEGIN:VEVENT'))) {
+      // last resort: list the .ics files in the calendar and download them
+      const doc = await dav('PROPFIND', col.url, { user, password, depth: 1, body: '<d:propfind xmlns:d="DAV:"><d:prop><d:getetag/><d:getcontenttype/></d:prop></d:propfind>' });
+      const hrefs = [...doc.getElementsByTagNameNS(DAV, 'response')].map((r) => r.getElementsByTagNameNS(DAV, 'href')[0]?.textContent?.trim()).filter((h) => h && /\.ics$/i.test(h)).slice(0, 400);
+      for (const h of hrefs) {
+        const res = await netFetch(new URL(h, col.url).href, { headers: { Authorization: 'Basic ' + b64(`${user}:${password}`) } });
+        if (res.ok) blocks.push(...blocksIn(await res.text()));
+      }
+    }
+    parts.push(...blocks);
   }
   return `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Command Centre//CalDAV//EN\r\n${parts.join('\r\n')}\r\nEND:VCALENDAR\r\n`;
 }
