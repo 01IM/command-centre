@@ -1,6 +1,6 @@
 // Offline support for the iPhone / iPad (home-screen) version. Not used by the Windows app.
 // App files: network first (so updates arrive), cached copy when offline. API calls are never cached here.
-const VERSION = 'cc-v3';
+const VERSION = 'cc-v4';
 const SHELL = ['./', 'index.html', 'styles.css', 'manifest.webmanifest',
   'js/app.js', 'js/store.js', 'js/services.js', 'js/oauth.js', 'js/integrations.js', 'js/cube.js', 'js/ical.js',
   'js/net.js', 'js/visuals.js', 'js/vault.js', 'js/sync.js', 'js/crypto.js',
@@ -16,7 +16,7 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
   e.respondWith(
-    fetch(e.request).then((res) => {
+    fetch(e.request, { cache: 'no-cache' }).then((res) => { // always check for a newer version first
       if (res.ok) { const copy = res.clone(); caches.open(VERSION).then((c) => c.put(e.request, copy)); }
       return res;
     }).catch(() => caches.match(e.request, { ignoreSearch: true }).then((r) => r || caches.match('index.html')))
