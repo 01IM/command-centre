@@ -20,6 +20,7 @@ const ICON_PATHS = {
   settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12a7 7 0 0 0 .1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6A7 7 0 0 0 19 12z',
   more: 'M5 12h.01 M12 12h.01 M19 12h.01',
   files: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+  budget: 'M3 7a2 2 0 0 1 2-2h12v4 M3 7v10a2 2 0 0 0 2 2h14V9H5a2 2 0 0 1-2-2z M16 14h.01',
   weather: 'M7 18h10a4 4 0 0 0 .5-7.97A6 6 0 0 0 6.1 11 3.5 3.5 0 0 0 7 18z',
 };
 const icon = (k) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON_PATHS[k]}"/></svg>`;
@@ -75,7 +76,7 @@ function openForm({ title, fields, submitLabel = 'Save', onSubmit, onDelete }) {
       if (f.type === 'textarea') input = `<textarea name="${f.name}" rows="${f.rows || 4}" placeholder="${esc(f.placeholder || '')}" ${req}>${esc(v)}</textarea>`;
       else if (f.type === 'select') input = `<select name="${f.name}" ${req}>${f.options.map((o) => { const [val, lab] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(val)}" ${String(val) === String(v) ? 'selected' : ''}>${esc(lab)}</option>`; }).join('')}</select>`;
       else if (f.type === 'file') input = `<input type="file" name="${f.name}" accept="${f.accept || ''}" ${f.multiple ? 'multiple' : ''}>`;
-      else input = `<input type="${f.type || 'text'}" name="${f.name}" value="${esc(v)}" placeholder="${esc(f.placeholder || '')}" ${req} ${f.step ? `step="${f.step}"` : ''}>`;
+      else input = `<input type="${f.type || 'text'}" name="${f.name}" value="${esc(v)}" placeholder="${esc(f.placeholder || '')}" ${req} ${f.step ? `step="${f.step}"` : ''} ${f.inputmode ? `inputmode="${f.inputmode}"` : ''} ${f.suggest ? `list="dl-${f.name}" autocomplete="off"` : ''}>${f.suggest ? `<datalist id="dl-${f.name}">${f.suggest.map((o) => `<option value="${esc(o)}">`).join('')}</datalist>` : ''}`;
       return `<label class="${f.wide ? 'wide' : ''}" ${f.group ? `data-group="${f.group}"` : ''}><span>${esc(f.label)}</span>${input}${f.hint ? `<small>${esc(f.hint)}</small>` : ''}</label>`;
     }).join('')}
     <div class="form-actions">
@@ -111,7 +112,7 @@ function confirmInline(form) {
 // ---------- navigation ----------
 const VIEWS = [
   ['home', 'Home'], ['schedule', 'Calendar'], ['tasks', 'To-do'], ['weather', 'Weather'], ['goals', 'Goals'],
-  ['files', 'Files'], ['documents', 'Expiry dates'], ['travel', 'Travel'], ['health', 'Sleep & HR'], ['notes', 'Notes'], ['settings', 'Settings'],
+  ['budget', 'Budget'], ['files', 'Files'], ['documents', 'Expiry dates'], ['travel', 'Travel'], ['health', 'Sleep & HR'], ['notes', 'Notes'], ['settings', 'Settings'],
 ];
 // Which device we're on: the Windows app, an iPhone-size screen or an iPad-size screen.
 // Some sections are left out of the phone and tablet versions on purpose.
@@ -308,11 +309,11 @@ function plansBlock({ max = 4 } = {}) {
   return `<ul class="plans">${items.map((p) => `<li data-edit-plan="${p.id}"><span class="ic">${PLAN_ICONS[p.type || 'other']}</span><div><b>${esc(p.title)}</b><small>${fmtDay(p.date)}${p.time ? ' · ' + fmtTime(new Date(p.date + 'T' + p.time)) : ''}${p.end && p.end !== p.date ? ' → ' + fmtDay(p.end) : ''}${p.where ? ' · ' + esc(p.where) : ''}</small></div><small class="rel">${relDays(daysUntil(p.date))}</small></li>`).join('')}</ul>`;
 }
 
-function docsAlertBlock() {
+function docsAlertBlock({ max = 5 } = {}) {
   const items = upcomingDocs(120);
   if (!list('docs').length) return empty('Add your passport, civil ID, visas and licences to get expiry reminders.', ' <a class="link" href="#documents">Add documents</a>');
   if (!items.length) return empty('Nothing expires in the next 4 months');
-  return `<ul class="alerts">${items.slice(0, 5).map((d) => `<li class="${d.days < 0 ? 'expired' : d.days <= 30 ? 'urgent' : d.days <= 90 ? 'soon' : ''}"><b>${esc(d.name)}${d.person && d.person !== people()[0] ? ` <em class="who">${esc(d.person)}</em>` : ''}</b><small>${d.days < 0 ? 'Expired ' + relDays(d.days) : 'Expires ' + relDays(d.days)} · ${fmtDate(d.expiry)}</small></li>`).join('')}</ul>`;
+  return `<ul class="alerts${max <= 3 ? ' tight' : ''}">${items.slice(0, max).map((d) => `<li class="${d.days < 0 ? 'expired' : d.days <= 30 ? 'urgent' : d.days <= 90 ? 'soon' : ''}"><b>${esc(d.name)}${d.person && d.person !== people()[0] ? ` <em class="who">${esc(d.person)}</em>` : ''}</b><small>${d.days < 0 ? 'Expired ' + relDays(d.days) : relDays(d.days)} · ${fmtDate(d.expiry, { day: 'numeric', month: 'short', year: '2-digit' })}</small></li>`).join('')}</ul>${items.length > max ? `<a class="more" href="#documents">+${items.length - max} more</a>` : ''}`;
 }
 
 function goalsBlock({ max = 4 } = {}) {
@@ -431,7 +432,10 @@ const VIEW_RENDER = {
       ${card('To-do', await safe(() => todoBlock(), 'todo'), { link: 'tasks', action: '<button class="icon-btn" data-refresh="todo" title="Refresh">↻</button>' })}
       ${!hasFeature('weather') ? '' : card('Weather', await safe(() => weatherBlock(), 'weather'), { link: 'weather', cls: 'weather-card', action: '<button class="icon-btn" data-refresh="weather" title="Refresh">↻</button>' })}
       ${card('Plans', await safe(() => plansBlock(), 'plans'), { link: 'schedule', action: '<button class="icon-btn" data-add="plan" title="Add plan">+</button>' })}
-      ${card('Document expiry', await safe(() => docsAlertBlock(), 'docs'), { link: 'documents' })}
+      <div class="card-stack">
+        ${card('Document expiry', await safe(() => docsAlertBlock({ max: 3 }), 'docs'), { link: 'documents', cls: 'compact' })}
+        ${card('Budget', await safe(() => budgetBlock(), 'budget'), { link: 'budget', cls: 'compact', action: `<span class="card-actions">${eyeBtn()}<button class="icon-btn" data-add="budget" title="Add">+</button></span>` })}
+      </div>
       ${card('Sleep & heart rate', await safe(() => healthBlock(), 'health'), { link: 'health', action: '<button class="icon-btn" data-refresh="health" title="Refresh">↻</button>' })}
       ${card('Goals', await safe(() => goalsBlock(), 'goals'), { link: 'goals', action: '<button class="icon-btn" data-add="goal" title="Add goal">+</button>' })}
       ${card('Overwatch', await safe(() => overwatchBlock(), 'overwatch'), { cls: 'ow-card' })}
@@ -487,6 +491,8 @@ const VIEW_RENDER = {
         <section class="card agenda"><header><h2>${sel === todayKey ? 'Today' : fmtDay(sel)}</h2><small>${relDays(daysUntil(sel))}</small></header>${agenda}</section>
       </div>`;
   },
+
+  async budget() { return budgetPage(); },
 
   async weather() {
     return `<div class="page-head"><h1>Weather</h1><div class="actions"><button class="btn ghost" data-refresh="weather">↻ Refresh</button></div></div>
@@ -653,6 +659,92 @@ const VIEW_RENDER = {
     </div>`;
   },
 };
+
+// ---------- budget ----------
+// Items: { kind: 'expense' | 'wish', name, amount, category, date, saved (wishlist: saved so far), note }
+const CURRENCIES = ['KWD', 'USD', 'GBP', 'EUR', 'AED', 'SAR', 'PKR', 'MYR'];
+const currency = () => state.settings.currency || 'KWD';
+const budgetView = { tab: 'expense' };
+let amountsHidden = (() => { try { return localStorage.getItem('cc-hide-amounts') === '1'; } catch { return false; } })();
+function money(n, { force = false } = {}) {
+  if (amountsHidden && !force) return '<span class="masked">••••</span>';
+  const cur = currency();
+  const digits = ['KWD', 'BHD', 'OMR'].includes(cur) ? 3 : 2;
+  try { return new Intl.NumberFormat('en-GB', { style: 'currency', currency: cur, minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n || 0); }
+  catch { return `${cur} ${(n || 0).toFixed(digits)}`; }
+}
+const eyeBtn = () => `<button class="icon-btn eye" data-eye title="${amountsHidden ? 'Show amounts' : 'Hide amounts'}" aria-label="${amountsHidden ? 'Show amounts' : 'Hide amounts'}"><svg class="ico" viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>${amountsHidden ? '<path d="M4 4l16 16"/>' : ''}</svg></button>`;
+const budgetItems = (kind) => list('budget').filter((x) => (x.kind || 'expense') === kind);
+function byCategory(items) {
+  const m = new Map();
+  for (const x of items) { const k = (x.category || 'Other').trim() || 'Other'; if (!m.has(k)) m.set(k, []); m.get(k).push(x); }
+  return [...m.entries()].map(([cat, arr]) => ({ cat, items: arr.sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.updatedAt - a.updatedAt), total: arr.reduce((s, x) => s + (+x.amount || 0), 0), saved: arr.reduce((s, x) => s + Math.min(+x.saved || 0, +x.amount || 0), 0) }))
+    .sort((a, b) => b.total - a.total);
+}
+
+function budgetBlock() {
+  const exp = byCategory(budgetItems('expense')), wish = budgetItems('wish');
+  if (!exp.length && !wish.length) return empty('Track spending by category and save up for wishlist items.', ' <button class="link" data-add="budget">Add the first one</button>');
+  const totalExp = exp.reduce((s, c) => s + c.total, 0);
+  const top = [...wish].sort((a, b) => (b.saved || 0) / (b.amount || 1) - (a.saved || 0) / (a.amount || 1)).slice(0, 2);
+  return `${exp.length ? `<div class="bud-total"><small>Expenses</small><strong>${money(totalExp)}</strong></div>
+    <ul class="bud-cats">${exp.slice(0, 4).map((c) => `<li><span>${esc(c.cat)}</span><b>${money(c.total)}</b></li>`).join('')}</ul>` : ''}
+    ${top.length ? `<ul class="bud-wish">${top.map((w) => { const pct = Math.min(100, Math.round(((+w.saved || 0) / (+w.amount || 1)) * 100)); return `<li><div class="row"><span>${esc(w.name)}</span><small>${amountsHidden ? pct + '%' : `${money(w.saved || 0)} / ${money(w.amount)}`}</small></div><div class="bar"><i style="width:${pct}%"></i></div></li>`; }).join('')}</ul>` : ''}`;
+}
+
+function budgetPage() {
+  const tab = budgetView.tab;
+  const items = budgetItems(tab);
+  const cats = byCategory(items);
+  const total = cats.reduce((s, c) => s + c.total, 0);
+  const savedAll = cats.reduce((s, c) => s + c.saved, 0);
+  const tabs = `<div class="seg tabs-seg"><button class="btn ${tab === 'expense' ? 'on' : 'ghost'}" data-bud-tab="expense">Expenses</button><button class="btn ${tab === 'wish' ? 'on' : 'ghost'}" data-bud-tab="wish">Wishlist</button></div>`;
+  const head = `<div class="page-head"><h1>Budget</h1><div class="actions">${tabs}${eyeBtn()}<button class="btn primary" data-add="budget" data-kind="${tab}">+ Add ${tab === 'wish' ? 'wish' : 'expense'}</button></div></div>`;
+  const summary = tab === 'expense'
+    ? `<div class="stat-row bud-stats"><div class="stat"><strong>${money(total)}</strong><small>total expenses</small></div><div class="stat"><strong>${cats.length}</strong><small>categories</small></div><div class="stat"><strong>${items.length}</strong><small>items</small></div><div class="stat cur"><small>Currency</small><select data-currency>${CURRENCIES.map((c) => `<option ${c === currency() ? 'selected' : ''}>${c}</option>`).join('')}</select></div></div>`
+    : `<div class="stat-row bud-stats"><div class="stat"><strong>${money(total)}</strong><small>wishlist total</small></div><div class="stat"><strong>${money(savedAll)}</strong><small>saved so far</small></div><div class="stat"><strong>${money(Math.max(0, total - savedAll))}</strong><small>still to save</small></div><div class="stat cur"><small>Currency</small><select data-currency>${CURRENCIES.map((c) => `<option ${c === currency() ? 'selected' : ''}>${c}</option>`).join('')}</select></div></div>`;
+  if (!items.length) return head + summary + card(tab === 'wish' ? 'No wishlist items yet' : 'No expenses yet', empty(tab === 'wish' ? 'Add things you’re saving for (e.g. Apple Watch Series 11) and log savings as you go.' : 'Add expenses under categories like Food, Fuel, Subscriptions, Gifts…', ` <button class="link" data-add="budget" data-kind="${tab}">Add one</button>`));
+  return head + summary + `<div class="grid bud-grid">${cats.map((c) => card(c.cat, `
+      <div class="bud-cat-total"><strong>${money(c.total)}</strong>${tab === 'wish' ? `<small>${money(c.saved)} saved</small>` : `<small>${c.items.length} item${c.items.length === 1 ? '' : 's'}</small>`}</div>
+      <ul class="bud-items">${c.items.map((x) => tab === 'wish' ? (() => { const pct = Math.min(100, Math.round(((+x.saved || 0) / (+x.amount || 1)) * 100)); return `<li class="wish" data-edit-budget="${x.id}">
+          <div class="row"><b>${esc(x.name)}</b><span>${money(x.amount)}</span></div>
+          <div class="bar"><i style="width:${pct}%"></i></div>
+          <div class="row"><small>${pct >= 100 ? 'Ready to buy 🎉' : `${money(x.saved || 0)} saved · ${money(Math.max(0, (+x.amount || 0) - (+x.saved || 0)))} to go`}</small><button class="btn ghost sm" data-save-toward="${x.id}">+ Save</button></div></li>`; })()
+        : `<li data-edit-budget="${x.id}"><div><b>${esc(x.name)}</b>${x.date || x.note ? `<small>${x.date ? fmtDate(x.date, { day: 'numeric', month: 'short' }) : ''}${x.date && x.note ? ' · ' : ''}${esc(x.note || '')}</small>` : ''}</div><span>${money(x.amount)}</span></li>`).join('')}</ul>`,
+      { action: `<button class="icon-btn" data-add="budget" data-kind="${tab}" data-cat="${esc(c.cat)}" title="Add to ${esc(c.cat)}">+</button>` })).join('')}</div>`;
+}
+
+function budgetForm(x = {}, { kind, cat } = {}) {
+  const k = x.kind || kind || 'expense';
+  const cats = [...new Set(list('budget').filter((i) => (i.kind || 'expense') === k).map((i) => i.category).filter(Boolean))];
+  openForm({
+    title: x.id ? 'Edit' : k === 'wish' ? 'Add wishlist item' : 'Add expense',
+    fields: [
+      { name: 'kind', label: 'Type', type: 'select', options: [['expense', 'Expense'], ['wish', 'Wishlist item']], value: k },
+      { name: 'category', label: 'Category', value: x.category || cat || '', placeholder: k === 'wish' ? 'Tech, Watches, Travel…' : 'Food, Fuel, Subscriptions…', suggest: cats, required: true },
+      { name: 'name', label: 'What', required: true, value: x.name, wide: true, placeholder: k === 'wish' ? 'e.g. Apple Watch Series 11' : 'e.g. Papa John’s' },
+      { name: 'amount', label: `${k === 'wish' ? 'Price' : 'Amount'} (${currency()})`, type: 'number', step: 'any', inputmode: 'decimal', required: true, value: x.amount ?? '' },
+      { name: 'date', label: 'Date', type: 'date', value: x.date || (k === 'expense' && !x.id ? ymd(new Date()) : '') },
+      { name: 'saved', label: `Saved so far (${currency()})`, type: 'number', step: 'any', inputmode: 'decimal', value: x.saved ?? '', group: 'wish' },
+      { name: 'note', label: 'Note', value: x.note, wide: true },
+    ],
+    onSubmit: async (v) => {
+      const amount = parseFloat(v.amount); if (!isFinite(amount) || amount < 0) throw new Error('Enter an amount');
+      await upsert('budget', { ...x, kind: v.kind, category: v.category.trim(), name: v.name, amount, date: v.date || '', saved: v.kind === 'wish' ? (parseFloat(v.saved) || 0) : undefined, note: v.note });
+      budgetView.tab = v.kind;
+    },
+    onDelete: x.id ? () => remove('budget', x.id) : null,
+  });
+  // show "saved so far" only for wishlist items
+  const f = $('#modal form'); const sel = f.querySelector('[name=kind]'); const g = f.querySelector('[data-group=wish]');
+  const syncW = () => { if (g) g.style.display = sel.value === 'wish' ? '' : 'none'; }; sel.addEventListener('change', syncW); syncW();
+}
+
+function saveTowardForm(x) {
+  openForm({ title: `Save toward ${x.name}`, submitLabel: 'Add', fields: [
+      { name: 'add', label: `Amount to add (${currency()})`, type: 'number', step: 'any', inputmode: 'decimal', required: true, wide: true, hint: `Saved so far: ${money(x.saved || 0, { force: true })} of ${money(x.amount, { force: true })}` }],
+    onSubmit: async (v) => { const n = parseFloat(v.add); if (!isFinite(n)) throw new Error('Enter an amount'); await upsert('budget', { ...x, saved: Math.max(0, (+x.saved || 0) + n) }); toast('Added to savings', 'ok'); } });
+}
 
 // ---------- flights (myFlightradar24 export) ----------
 const ap = (s) => { const m = (s || '').match(/^(.*?)\s*\/\s*(.*?)\s*\(([A-Z0-9]{3})\/([A-Z0-9]{4})\)/); return m ? { city: m[1], name: m[2], iata: m[3] } : { city: s, name: s, iata: (s || '').slice(0, 3).toUpperCase() }; };
@@ -982,6 +1074,8 @@ function bindView(root) {
     if (ext && isApp()) { e.preventDefault(); return openExternal(ext.href); }
     const fileCard = e.target.closest('[data-file]');
     if (fileCard && !e.target.closest('button')) { if (e.detail === 2) return V.openFile(fileCard.dataset.file); return; }
+    const bud = e.target.closest('[data-edit-budget]');
+    if (bud && !e.target.closest('button')) return budgetForm(list('budget').find((x) => x.id === bud.dataset.editBudget));
     const t = e.target.closest('button, [data-edit-plan], [data-edit-doc], [data-edit-trip], [data-edit-season], [data-day]');
     if (!t) return;
     const ds = t.dataset;
@@ -998,6 +1092,10 @@ function bindView(root) {
       if (ds.editTask) { const lt = list('localTasks').find((x) => x.id === ds.editTask); return taskForm(lt); }
       if (ds.refresh) { t.classList.add('spin'); await refresh(ds.refresh, true); t.classList.remove('spin'); return; }
       if (ds.join) return joinMeeting(ds.join);
+      if (ds.eye !== undefined) { amountsHidden = !amountsHidden; try { localStorage.setItem('cc-hide-amounts', amountsHidden ? '1' : '0'); } catch { /* ignore */ } return doRender(false, true); }
+      if (ds.budTab) { budgetView.tab = ds.budTab; return doRender(false, true); }
+      if (ds.add === 'budget') return budgetForm({}, { kind: ds.kind || budgetView.tab, cat: ds.cat });
+      if (ds.saveToward) { e.stopPropagation(); return saveTowardForm(list('budget').find((x) => x.id === ds.saveToward)); }
       if (ds.avatarChange !== undefined) return pickAvatar();
       if (ds.syncNow !== undefined) { await Sync.syncNow(); return Sync.status.error ? toast(Sync.status.error, 'error') : toast('Synced', 'ok'); }
       if (ds.syncOff !== undefined) { if (!t.dataset.armed) { t.dataset.armed = 1; t.textContent = 'Tap again to sign out'; return; } await Sync.disconnect(); toast('Sync turned off on this device (your data stays here)', 'ok'); return doRender(false, true); }
@@ -1122,6 +1220,9 @@ function bindView(root) {
       }
     } catch (err) { toast(errText(err), 'error'); }
   };
+
+  const curSel = $('[data-currency]', root);
+  if (curSel) curSel.onchange = async () => { await setSetting('currency', curSel.value); doRender(false, true); };
 
   // files: live search, drag & drop, thumbnails
   const search = $('[data-files-search]', root);

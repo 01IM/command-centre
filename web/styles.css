@@ -739,3 +739,38 @@ body[data-device=phone] #cube { display: none; }
 
 .nights li { grid-template-columns: 110px 1fr 70px; }
 .nights .nap-note { grid-column: 2 / -1; margin-top: -2px; }
+
+/* =================== budget =================== */
+.card-actions { display: inline-flex; gap: 2px; }
+.icon-btn.eye .ico { width: 17px; height: 17px; }
+.masked { letter-spacing: .12em; color: var(--text-3); }
+.alerts.tight li { padding: 6px 0 6px 10px; margin-bottom: 4px; }
+.alerts.tight li b { font-size: 13.5px; }
+.card.compact > header { margin-bottom: 8px; }
+.bud-total { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.bud-total strong { font: 400 24px var(--serif); font-variant-numeric: tabular-nums; }
+.bud-cats, .bud-wish, .bud-items { list-style: none; margin: 0; padding: 0; }
+.bud-cats li { display: flex; justify-content: space-between; padding: 5px 0; border-top: 1px solid var(--line-soft); font-size: 13.5px; }
+.bud-cats li span { color: var(--text-2); }
+.bud-cats b, .bud-items span, .bud-items .row span { font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bud-wish { margin-top: 10px; }
+.bud-wish li { padding: 4px 0; }
+.bud-wish .row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.bud-wish .bar, .bud-items .bar { margin: 5px 0 3px; }
+.bud-stats .stat strong { font-size: 26px; font-variant-numeric: tabular-nums; }
+.bud-stats .stat.cur { display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+.bud-stats select { width: auto; padding: 6px 10px; }
+.bud-cat-total { display: flex; justify-content: space-between; align-items: baseline; margin: -4px 0 10px; }
+.bud-cat-total strong { font: 400 26px var(--serif); color: var(--accent); font-variant-numeric: tabular-nums; }
+.bud-items li { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 9px 0; border-top: 1px solid var(--line-soft); cursor: pointer; }
+.bud-items li:first-child { border-top: 0; }
+.bud-items li > div { min-width: 0; }
+.bud-items li b { font-weight: 500; display: block; }
+.bud-items li small { display: block; }
+.bud-items li.wish { display: block; }
+.bud-items li.wish .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.bud-grid { margin-top: 4px; }
+
+.card-stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.card-stack > .card { margin: 0 !important; }
+.card-stack > .card:last-child { flex: 1; }
