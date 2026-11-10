@@ -76,7 +76,7 @@ function openForm({ title, fields, submitLabel = 'Save', onSubmit, onDelete }) {
       else if (f.type === 'select') input = `<select name="${f.name}" ${req}>${f.options.map((o) => { const [val, lab] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(val)}" ${String(val) === String(v) ? 'selected' : ''}>${esc(lab)}</option>`; }).join('')}</select>`;
       else if (f.type === 'file') input = `<input type="file" name="${f.name}" accept="${f.accept || ''}" ${f.multiple ? 'multiple' : ''}>`;
       else input = `<input type="${f.type || 'text'}" name="${f.name}" value="${esc(v)}" placeholder="${esc(f.placeholder || '')}" ${req} ${f.step ? `step="${f.step}"` : ''}>`;
-      return `<label class="${f.wide ? 'wide' : ''}"><span>${esc(f.label)}</span>${input}${f.hint ? `<small>${esc(f.hint)}</small>` : ''}</label>`;
+      return `<label class="${f.wide ? 'wide' : ''}" ${f.group ? `data-group="${f.group}"` : ''}><span>${esc(f.label)}</span>${input}${f.hint ? `<small>${esc(f.hint)}</small>` : ''}</label>`;
     }).join('')}
     <div class="form-actions">
       ${onDelete ? '<button type="button" class="btn danger" data-act="delete">Delete</button>' : ''}
@@ -86,6 +86,8 @@ function openForm({ title, fields, submitLabel = 'Save', onSubmit, onDelete }) {
     </div>
   </form>`;
   const form = $('form', dlg);
+  const typeSel = form.querySelector('select[name=type]');
+  if (typeSel && form.querySelector('[data-group]')) { const syncG = () => form.querySelectorAll('[data-group]').forEach((l) => { l.style.display = l.dataset.group === typeSel.value ? '' : 'none'; }); typeSel.addEventListener('change', syncG); syncG(); }
   const np = form.querySelector('[name=newPerson]');
   if (np) { const sel = form.querySelector('[name=person]'); const sync = () => { np.closest('label').style.display = sel.value === '__new__' ? '' : 'none'; if (sel.value === '__new__') np.focus(); }; sel.onchange = sync; sync(); }
   form.addEventListener('submit', async (e) => {
@@ -404,7 +406,9 @@ const VIEW_RENDER = {
     const gridStart = new Date(first); gridStart.setDate(1 - ((first.getDay() + 6) % 7)); // weeks start Monday
     const gridEnd = new Date(gridStart); gridEnd.setDate(gridStart.getDate() + 42);
     const texts = await kvGet('cache:ics', []);
-    const evs = texts.length ? I.eventsBetween(texts, gridStart, gridEnd) : relayEvents(await kvGet('relay:calendar'), gridStart, gridEnd);
+    const cdIds = I.calendars().filter((c) => c.type === 'caldav').map((c) => c.id);
+    const evs = !texts.length ? relayEvents(await kvGet('relay:calendar'), gridStart, gridEnd)
+      : [...I.eventsBetween(texts, gridStart, gridEnd), ...(!isApp() && cdIds.length ? relayEvents(await kvGet('relay:calendar'), gridStart, gridEnd).filter((e) => cdIds.includes(e.calId)) : [])];
     const plans = list('plans');
     const byDay = new Map();
     const add = (key, item) => { if (!byDay.has(key)) byDay.set(key, []); byDay.get(key).push(item); };
@@ -585,7 +589,7 @@ const VIEW_RENDER = {
     <div class="grid">
       ${syncCard}
       ${card('Calendars', `<p class="muted">Add each calendar you want to see — e.g. your Google calendar and your Plot.it work calendar. They're all merged into one view, each in its own colour.</p>
-        <ul class="cal-list">${I.calendars().map((c) => `<li><i style="background:${esc(c.color)}"></i><div><b>${esc(c.name)}</b><small>${esc(c.url.replace(/^(https?:\/\/[^/]+).*/, '$1/…'))}</small></div><button class="icon-btn" data-cal-edit="${esc(c.id)}" title="Edit">✎</button></li>`).join('') || '<li class="empty">No calendars yet.</li>'}</ul>
+        <ul class="cal-list">${I.calendars().map((c) => `<li><i style="background:${esc(c.color)}"></i><div><b>${esc(c.name)}</b><small>${c.type === 'caldav' ? esc(c.user + ' · ' + c.url.replace('https://', '')) : esc(c.url.replace(/^(https?:\/\/[^/]+).*/, '$1/…'))}</small></div><button class="icon-btn" data-cal-edit="${esc(c.id)}" title="Edit">✎</button></li>`).join('') || '<li class="empty">No calendars yet.</li>'}</ul>
         <div class="row">${calAt ? `<small class="muted">Updated ${fmtTime(calAt)}</small>` : ''}<span class="spacer"></span><button class="btn primary sm" data-cal-add>+ Add calendar</button></div>
         <details class="howto"><summary>Where do I find the link?</summary><p><b>Google Calendar:</b> calendar.google.com → ⚙ Settings → click the calendar under “Settings for my calendars” → Integrate calendar → copy <b>Secret address in iCal format</b>.</p><p><b>Outlook / Microsoft 365 (work):</b> outlook.office.com → ⚙ Settings → Calendar → Shared calendars → Publish a calendar → choose the calendar and “Can view all details” → Publish → copy the <b>ICS</b> link.</p><p>Treat these links like passwords — anyone with one can read that calendar.</p></details>`)}
       ${!isApp() ? card('Fitbit, Microsoft To Do & notifications', `<p class="muted">These are set up in the Windows app. With sync on, your Fitbit sleep and heart rate appear here too.</p>`) : ''}
@@ -847,26 +851,50 @@ function personForm() {
   });
 }
 
-function calendarForm(c = {}) {
+async function calendarForm(c = {}) {
   const used = I.calendars().map((x) => x.color);
   const color = c.color || I.CAL_COLORS.find((x) => !used.includes(x)) || I.CAL_COLORS[0];
+  const type = c.type || 'ics';
+  const hasPw = c.id ? !!(await kvGet('calsecret:' + c.id)) : false;
   openForm({
     title: c.id ? 'Edit calendar' : 'Add calendar',
     fields: [
       { name: 'name', label: 'Name', required: true, value: c.name || (I.calendars().length ? 'Plot.it' : 'Personal'), placeholder: 'Personal, Plot.it…' },
       { name: 'color', label: 'Colour', type: 'select', options: I.CAL_COLORS.map((x, i) => [x, ['Gold', 'Blue', 'Green', 'Red', 'Lilac', 'Orange', 'Teal', 'Pink'][i]]), value: color },
-      { name: 'url', label: 'iCal / ICS link', required: true, value: c.url, wide: true, placeholder: 'https://calendar.google.com/calendar/ical/…/basic.ics', hint: 'Google: “Secret address in iCal format”. Outlook: Publish a calendar → ICS link.' },
+      { name: 'type', label: 'Kind of calendar', type: 'select', wide: true, value: type, options: [['ics', 'Google / Outlook — private iCal link'], ['caldav', 'Work email calendar (CalDAV, e.g. Plot.it / cPanel)']] },
+      { name: 'url', label: 'iCal / ICS link', value: type === 'ics' ? c.url : '', wide: true, placeholder: 'https://calendar.google.com/calendar/ical/…/basic.ics', hint: 'Google: “Secret address in iCal format”. Outlook: Publish a calendar → ICS link.', group: 'ics' },
+      { name: 'server', label: 'Server', value: type === 'caldav' ? c.url : 'https://mail.plotoit.com:2080', wide: true, hint: 'From your email provider. Plot.it: https://mail.plotoit.com:2080', group: 'caldav' },
+      { name: 'user', label: 'Email / username', value: c.user || 'imran.ali@plotoit.com', group: 'caldav' },
+      { name: 'password', label: hasPw ? 'Password (leave empty to keep)' : 'Email password', type: 'password', group: 'caldav', hint: 'Stored only on this computer — never synced.' },
     ],
     onSubmit: async (v) => {
-      if (!/^(https?|webcal):\/\//i.test(v.url)) throw new Error('That doesn’t look like a link — it should start with https://');
+      const id = c.id || 'cal' + Date.now().toString(36);
+      let item;
+      if (v.type === 'caldav') {
+        if (!isApp()) throw new Error('Work email calendars are added in the Windows app — they then appear here through sync');
+        if (!/^https:\/\//i.test(v.server)) throw new Error('The server should start with https://');
+        if (!v.user) throw new Error('Enter your email');
+        if (!v.password && !hasPw) throw new Error('Enter the email password');
+        const server = v.server.trim().replace(/\/+$/, '');
+        const principal = /plotoit\.com/i.test(server) ? `/principals/${v.user.trim()}` : (c.principal || '');
+        if (v.password) await kvSet('calsecret:' + id, v.password);
+        await kvSet('caldav:cols:' + id, null); // rediscover
+        // check the sign-in straight away so mistakes show now
+        const { discover } = await import('./caldav.js');
+        try { await discover({ server, user: v.user.trim(), password: v.password || await kvGet('calsecret:' + id), principal }); }
+        catch (e) { throw new Error('Couldn’t connect: ' + errText(e)); }
+        item = { id, name: v.name, color: v.color, type: 'caldav', url: server, user: v.user.trim(), principal };
+      } else {
+        if (!/^(https?|webcal):\/\//i.test(v.url)) throw new Error('That doesn’t look like a link — it should start with https://');
+        item = { id, name: v.name, url: v.url.trim(), color: v.color };
+      }
       const list = I.calendars().filter((x) => x.id !== c.id);
-      const item = { id: c.id || 'cal' + Date.now().toString(36), name: v.name, url: v.url.trim(), color: v.color };
       const idx = I.calendars().findIndex((x) => x.id === c.id);
       if (idx >= 0) list.splice(idx, 0, item); else list.push(item);
       await setSetting('calendars', list);
       toast('Saved — loading calendar…', 'ok'); refresh('calendar', true);
     },
-    onDelete: c.id ? async () => { await setSetting('calendars', I.calendars().filter((x) => x.id !== c.id)); refresh('calendar', true); } : null,
+    onDelete: c.id ? async () => { await kvSet('calsecret:' + c.id, null); await setSetting('calendars', I.calendars().filter((x) => x.id !== c.id)); refresh('calendar', true); } : null,
   });
 }
 
@@ -935,8 +963,8 @@ function bindView(root) {
       if (ds.syncNow !== undefined) { await Sync.syncNow(); return Sync.status.error ? toast(Sync.status.error, 'error') : toast('Synced', 'ok'); }
       if (ds.syncOff !== undefined) { if (!t.dataset.armed) { t.dataset.armed = 1; t.textContent = 'Tap again to sign out'; return; } await Sync.disconnect(); toast('Sync turned off on this device (your data stays here)', 'ok'); return doRender(false, true); }
       if (ds.themeFlip !== undefined) { await setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'); return doRender(false, true); }
-      if (ds.calAdd !== undefined) return calendarForm();
-      if (ds.calEdit) return calendarForm(I.calendars().find((c) => c.id === ds.calEdit));
+      if (ds.calAdd !== undefined) return await calendarForm();
+      if (ds.calEdit) return await calendarForm(I.calendars().find((c) => c.id === ds.calEdit));
       if (ds.calToggle) { const h = new Set(state.settings.hiddenCalendars || []); h.has(ds.calToggle) ? h.delete(ds.calToggle) : h.add(ds.calToggle); await setSetting('hiddenCalendars', [...h]); cache.calendar = { ...cache.calendar, events: I.eventsBetween(await kvGet('cache:ics', []), startOfDay(), new Date(Date.now() + 15 * 86400000)) }; return doRender(false, true); }
       if (ds.avatarRemove !== undefined) { await kvSet('profilePhoto', null); await kvSet('profilePhotoAt', Date.now()); Sync.soon(1500); await loadAvatar(); return toast('Picture removed', 'ok'); }
       // ----- files vault -----
@@ -1114,7 +1142,12 @@ async function refresh(what, manual = false) {
         const prev = await kvGet('relay:out:calendar');
         if (JSON.stringify(prev?.events) !== JSON.stringify(relay)) { await kvSet('relay:out:calendar', { at: Date.now(), events: relay }); Sync.soon(1500); }
       } else {
-        try { await I.syncCalendar(Sync.proxyFetchICS); cache.calendarError = null; cache.calendarSource = 'direct'; }
+        try {
+          await I.syncCalendar(Sync.proxyFetchICS); cache.calendarError = null; cache.calendarSource = 'direct';
+          // work-email (CalDAV) calendars only reach phones through the Windows app's relay
+          const cd = I.calendars().filter((c) => c.type === 'caldav').map((c) => c.id);
+          if (cd.length) { const r = await kvGet('relay:calendar'); const cur = await kvGet('cache:calendar'); const extra = relayEvents(r, startOfDay(), new Date(Date.now() + 15 * 86400000)).filter((e) => cd.includes(e.calId)); await kvSet('cache:calendar', { ...cur, events: [...(cur?.events || []), ...extra].sort((a, b) => new Date(a.start) - new Date(b.start)) }); }
+        }
         catch (e) {
           if (e.code !== 'NOPROXY') { cache.calendarError = navigator.onLine ? errText(e) : null; throw e; }
           cache.calendarSource = 'relay'; cache.calendarError = null;

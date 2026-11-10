@@ -4,6 +4,8 @@ import { state, kvSet, kvGet } from './store.js';
 import { authFetch, signIn, connectionStatus } from './oauth.js';
 import { netFetch } from './net.js';
 import { parseICS } from './ical.js';
+import * as CalDAV from './caldav.js';
+import { isApp } from './net.js';
 
 export const getClient = (provider) => provider === 'google'
   ? { clientId: state.settings.googleClientId, clientSecret: state.settings.googleClientSecret }
@@ -46,7 +48,21 @@ export async function syncCalendar(fetchVia = null) {
   if (!cals.length) { await kvSet('cache:ics', []); await kvSet('cache:calendar', { at: Date.now(), events: [] }); return []; }
   const texts = [], errors = [];
   for (const cal of cals) {
+    if (cal.type === 'caldav' && !isApp()) continue; // phones get these through sync from the Windows app
     try {
+      if (cal.type === 'caldav') {
+        const password = await kvGet('calsecret:' + cal.id);
+        if (!password) throw new Error('needs its password — open Settings → Calendars and edit it');
+        const acct = { server: cal.url, user: cal.user, password, principal: cal.principal };
+        let cols = await kvGet('caldav:cols:' + cal.id);
+        if (!cols?.length) { cols = await CalDAV.discover(acct); await kvSet('caldav:cols:' + cal.id, cols); }
+        const from = new Date(Date.now() - 45 * 86400000), to = new Date(Date.now() + 120 * 86400000);
+        let text;
+        try { text = await CalDAV.fetchEvents(acct, cols, from, to); }
+        catch (e) { cols = await CalDAV.discover(acct); await kvSet('caldav:cols:' + cal.id, cols); text = await CalDAV.fetchEvents(acct, cols, from, to); }
+        texts.push({ id: cal.id, name: cal.name, color: cal.color, text });
+        continue;
+      }
       const link = cal.url.replace(/^webcal:/, 'https:');
       let text;
       if (fetchVia) text = await fetchVia(link);
