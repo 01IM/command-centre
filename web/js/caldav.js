@@ -80,3 +80,62 @@ export async function fetchEvents({ user, password }, collections, from, to) {
   }
   return `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Command Centre//CalDAV//EN\r\n${parts.join('\r\n')}\r\nEND:VCALENDAR\r\n`;
 }
+
+// Step-by-step connection test: returns a readable log of what the server answers.
+export async function diagnose({ server, user, password, principal }) {
+  const log = [];
+  const base = server.replace(/\/+$/, '');
+  const auth = { Authorization: 'Basic ' + b64(`${user}:${password}`), 'Content-Type': 'application/xml; charset=utf-8' };
+  const call = async (method, url, depth, body) => {
+    try {
+      const res = await netFetch(url, { method, headers: { ...auth, ...(depth != null ? { Depth: String(depth) } : {}) }, body });
+      const text = await res.text();
+      return { status: res.status, text };
+    } catch (e) { return { status: 0, text: String(e?.message || e) }; }
+  };
+  const parse = (t) => { try { return new DOMParser().parseFromString(t, 'application/xml'); } catch { return null; } };
+  const short = (t) => (t || '').replace(/\s+/g, ' ').slice(0, 300);
+  const pURL = new URL(principal || `/principals/${user}/`, base + '/').href;
+  log.push(`Server: ${base}`, `Principal: ${pURL}`);
+  let r = await call('PROPFIND', pURL, 0, `<d:propfind xmlns:d="DAV:" xmlns:c="${CAL}"><d:prop><c:calendar-home-set/><d:current-user-principal/><d:displayname/></d:prop></d:propfind>`);
+  log.push(`1) PROPFIND principal → ${r.status}`);
+  let doc = parse(r.text);
+  const home = doc && hrefIn(doc, CAL, 'calendar-home-set');
+  log.push(`   calendar-home-set: ${home || '(none) ' + short(r.text)}`);
+  const homeURL = new URL(home || `/calendars/${user}/`, base + '/').href;
+  r = await call('PROPFIND', homeURL, 1, `<d:propfind xmlns:d="DAV:" xmlns:c="${CAL}"><d:prop><d:resourcetype/><d:displayname/><c:supported-calendar-component-set/><d:getctag xmlns:cs="http://calendarserver.org/ns/"/></d:prop></d:propfind>`);
+  log.push(`2) PROPFIND home (${homeURL}) → ${r.status}`);
+  doc = parse(r.text);
+  const cols = [];
+  for (const resp of doc ? doc.getElementsByTagNameNS(DAV, 'response') : []) {
+    const href = resp.getElementsByTagNameNS(DAV, 'href')[0]?.textContent?.trim();
+    const types = [...(resp.getElementsByTagNameNS(DAV, 'resourcetype')[0]?.children || [])].map((c) => c.localName).join(',');
+    const name = resp.getElementsByTagNameNS(DAV, 'displayname')[0]?.textContent?.trim() || '';
+    const comps = [...resp.getElementsByTagNameNS(CAL, 'comp')].map((c) => c.getAttribute('name')).join(',');
+    log.push(`   • ${href}  [${types}]  "${name}"  ${comps}`);
+    if (/calendar/.test(types) && !/schedule/.test(types)) cols.push(new URL(href, base + '/').href);
+  }
+  if (!cols.length) log.push('   (no calendar collections found) ' + short(r.text));
+  const from = new Date(Date.now() - 45 * 86400000), to = new Date(Date.now() + 120 * 86400000);
+  for (const col of cols) {
+    log.push(`3) Calendar ${col}`);
+    const q = (f) => `<?xml version="1.0" encoding="utf-8"?><c:calendar-query xmlns:d="DAV:" xmlns:c="${CAL}"><d:prop><d:getetag/><c:calendar-data/></d:prop><c:filter><c:comp-filter name="VCALENDAR">${f}</c:comp-filter></c:filter></c:calendar-query>`;
+    for (const [label, body] of [['REPORT date range', q(`<c:comp-filter name="VEVENT"><c:time-range start="${utc(from)}" end="${utc(to)}"/></c:comp-filter>`)], ['REPORT all', q('<c:comp-filter name="VEVENT"/>')]]) {
+      r = await call('REPORT', col, 1, body);
+      const d = parse(r.text);
+      const n = d ? d.getElementsByTagNameNS(DAV, 'response').length : 0;
+      const data = d ? [...d.getElementsByTagNameNS(CAL, 'calendar-data')].length : 0;
+      log.push(`   ${label} → ${r.status}, ${n} responses, ${data} with event data${n === 0 ? ' · ' + short(r.text) : ''}`);
+    }
+    r = await call('PROPFIND', col, 1, '<d:propfind xmlns:d="DAV:"><d:prop><d:getetag/><d:getcontenttype/></d:prop></d:propfind>');
+    const d = parse(r.text);
+    const hrefs = d ? [...d.getElementsByTagNameNS(DAV, 'response')].map((x) => x.getElementsByTagNameNS(DAV, 'href')[0]?.textContent?.trim()) : [];
+    log.push(`   PROPFIND items → ${r.status}, ${hrefs.length} entries: ${hrefs.slice(0, 6).join(' | ')}`);
+    const firstItem = hrefs.find((h) => h && !new URL(h, base + '/').href.replace(/\/$/, '').endsWith(new URL(col).pathname.replace(/\/$/, '')));
+    if (firstItem) {
+      r = await call('GET', new URL(firstItem, base + '/').href, null);
+      log.push(`   GET first item → ${r.status}: ${short(r.text).slice(0, 160)}`);
+    }
+  }
+  return log.join('\n');
+}

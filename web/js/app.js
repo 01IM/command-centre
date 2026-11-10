@@ -65,7 +65,7 @@ function toast(msg, kind = '') {
 
 // ---------- modal forms ----------
 // fields: [{name,label,type,options,required,placeholder,value}]
-function openForm({ title, fields, submitLabel = 'Save', onSubmit, onDelete }) {
+function openForm({ title, fields, submitLabel = 'Save', onSubmit, onDelete, extraButton }) {
   const dlg = $('#modal');
   dlg.innerHTML = `<form method="dialog" class="form">
     <h3>${esc(title)}</h3>
@@ -81,6 +81,7 @@ function openForm({ title, fields, submitLabel = 'Save', onSubmit, onDelete }) {
     }).join('')}
     <div class="form-actions">
       ${onDelete ? '<button type="button" class="btn danger" data-act="delete">Delete</button>' : ''}
+      ${extraButton ? `<button type="button" class="btn ghost" data-act="extra">${esc(extraButton.label)}</button>` : ''}
       <span class="spacer"></span>
       <button type="button" class="btn ghost" data-act="cancel">Cancel</button>
       <button type="submit" class="btn primary">${esc(submitLabel)}</button>
@@ -99,6 +100,7 @@ function openForm({ title, fields, submitLabel = 'Save', onSubmit, onDelete }) {
     try { await onSubmit(values); dlg.close(); } catch (err) { toast(errText(err), 'error'); }
   });
   $('[data-act=cancel]', form).onclick = () => dlg.close();
+  if (extraButton) $('[data-act=extra]', form).onclick = () => extraButton.onClick().catch((e) => toast(errText(e), 'error'));
   if (onDelete) $('[data-act=delete]', form).onclick = async () => { if (confirmInline(form)) { await onDelete(); dlg.close(); } };
   dlg.showModal();
 }
@@ -1009,6 +1011,15 @@ async function calendarForm(c = {}) {
       { name: 'user', label: 'Email / username', value: c.user || 'imran.ali@plotoit.com', group: 'caldav' },
       { name: 'password', label: hasPw ? 'Password (leave empty to keep)' : 'Email password', type: 'password', group: 'caldav', hint: 'Stored only on this computer — never synced.' },
     ],
+    extraButton: c.id && type === 'caldav' && isApp() ? { label: 'Test connection', onClick: async () => {
+      const { diagnose } = await import('./caldav.js');
+      toast('Testing… this can take a few seconds');
+      const log = await diagnose({ server: c.url, user: c.user, password: await kvGet('calsecret:' + c.id), principal: c.principal });
+      const dlg = $('#viewer');
+      dlg.innerHTML = `<div class="diag"><h3>Plot.it connection test</h3><pre>${esc(log)}</pre><div class="row"><button class="btn ghost sm" id="diagCopy">Copy</button><span class="spacer"></span><button class="btn primary sm" onclick="this.closest('dialog').close()">Close</button></div></div>`;
+      $('#modal').close(); dlg.showModal();
+      $('#diagCopy').onclick = () => { navigator.clipboard?.writeText(log); toast('Copied', 'ok'); };
+    } } : null,
     onSubmit: async (v) => {
       const id = c.id || 'cal' + Date.now().toString(36);
       let item;
