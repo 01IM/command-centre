@@ -736,3 +736,6 @@ body[data-device=phone] #cube { display: none; }
   .content { padding-top: calc(env(safe-area-inset-top) + 28px) !important; }
   .sidebar { padding-top: calc(env(safe-area-inset-top) + 28px) !important; }
 }
+
+.nights li { grid-template-columns: 110px 1fr 70px; }
+.nights .nap-note { grid-column: 2 / -1; margin-top: -2px; }
