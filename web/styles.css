@@ -717,3 +717,5 @@ dialog[open]::backdrop { animation: fadein .28s ease; }
   .cal-cell { padding: 6px 4px; align-items: center; }
   .cal-chips { justify-content: center; }
 }
+/* the cube timer isn't part of the phone version */
+body[data-device=phone] #cube { display: none; }
