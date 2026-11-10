@@ -125,11 +125,12 @@ export async function syncHealth() {
 
   // Sleep sessions (last 7 nights)
   try {
-    const pts = await listPoints('sleep', `sleep.interval.end_time >= "${weekAgo.toISOString()}"`, 25);
+    const pts = await listPoints('sleep', `sleep.interval.end_time >= "${new Date(now - 9 * 24 * 3600 * 1000).toISOString()}"`, 50);
     out.sleep = pts.map((p) => {
       const s = p.sleep || p;
       const start = asDate(deepFind(s, ['startTime'])); const end = asDate(deepFind(s, ['endTime']));
-      const asleepMin = deepFind(s, ['minutesAsleep', 'asleepMinutes', 'totalSleepMinutes']);
+      // Google sends some numbers as text and some as durations ("21600s"); app.js normalises them.
+      const asleepMin = deepFind(s, ['minutesAsleep', 'asleepMinutes', 'totalSleepMinutes', 'minutesAsleepTotal', 'asleepDuration', 'sleepDuration', 'totalSleepTime']);
       const stages = deepFind(s, ['stagesSummary', 'stageSummaries', 'summary']);
       return { start, end, minutes: asleepMin ?? (start && end ? Math.round((end - start) / 60000) : null), stages };
     }).filter((s) => s.start).sort((a, b) => b.start - a.start);

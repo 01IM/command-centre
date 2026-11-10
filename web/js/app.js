@@ -345,24 +345,63 @@ async function healthBlock({ detail = false } = {}) {
   const status = await I.connectionStatus('google');
   const h = normaliseHealth(cache.health);
   if (!h) return status === 'connected' ? empty('Syncing sleep and heart rate…') : !isApp() ? empty(Sync.enabled() ? 'Connect Fitbit in the Windows app — your sleep and heart rate then sync here.' : 'Turn on sync in Settings to see your Fitbit data from the Windows app.') : connectCta('google', 'Show last night’s sleep and your heart rate from your Fitbit Air.');
-  const last = h.sleep?.[0];
-  const avg = h.sleep?.length ? Math.round(h.sleep.reduce((s, x) => s + (x.minutes || 0), 0) / h.sleep.length) : null;
+  const days = sleepDays(h.sleep);
+  const last = days[0];
+  const week = days.filter((d) => daysUntil(d.key) >= -7);
+  const avg = week.length ? Math.round(week.reduce((sum, d) => sum + d.total, 0) / week.length) : null;
+  const breakdown = (d) => d.sessions.length > 1
+    ? d.sessions.map((x) => `${x === d.main ? 'Night' : 'Nap'} ${minsToHM(x.minutes)}`).join(' + ')
+    : `${fmtTime(d.main.start)} → ${fmtTime(d.main.end)}`;
   const latest = h.hr?.[h.hr.length - 1];
   const rest = h.resting?.sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
   const hrs = h.hr || [];
   const min = hrs.length ? Math.min(...hrs.map((x) => x.bpm)) : null, max = hrs.length ? Math.max(...hrs.map((x) => x.bpm)) : null;
   let html = `<div class="stats">
-    <div><small>Last night</small><strong>${last ? minsToHM(last.minutes) : '—'}</strong><small>${last ? `${fmtTime(last.start)} → ${fmtTime(last.end)}` : h.sleepError ? 'Not available' : 'No data'}</small></div>
-    <div><small>7-night avg</small><strong>${minsToHM(avg)}</strong><small>${h.sleep?.length || 0} nights</small></div>
+    <div><small>${last && daysUntil(last.key) < 0 ? fmtDate(last.key, { weekday: 'short', day: 'numeric', month: 'short' }) : 'Last night'}</small><strong>${last ? minsToHM(last.total) : '—'}</strong><small>${last ? breakdown(last) : h.sleepError ? 'Not available' : 'No data'}</small></div>
+    <div><small>7-day average</small><strong>${minsToHM(avg)}</strong><small>${week.length} day${week.length === 1 ? '' : 's'} · naps included</small></div>
     <div><small>Resting HR</small><strong>${rest ? rest.bpm + ' <em>bpm</em>' : '—'}</strong><small>${rest?.date ? fmtDate(rest.date, { weekday: 'short', day: 'numeric', month: 'short' }) : ''}</small></div>
     <div><small>Latest HR</small><strong>${latest ? latest.bpm + ' <em>bpm</em>' : '—'}</strong><small>${latest ? fmtTime(latest.t) : h.hrError ? 'Not available' : ''}</small></div>
   </div>`;
   if (hrs.length > 1) html += `<div class="spark-wrap">${sparkline(hrs)}<small>24 h heart rate · ${min}–${max} bpm</small></div>`;
-  if (detail && h.sleep?.length) {
-    html += `<h3 class="sub">Recent nights</h3><ul class="nights">${h.sleep.map((s) => `<li><span>${fmtDay(s.start)}</span><div class="bar"><i style="width:${Math.min(100, ((s.minutes || 0) / 540) * 100)}%"></i></div><b>${minsToHM(s.minutes)}</b></li>`).join('')}</ul>`;
+  if (detail && days.length) {
+    html += `<h3 class="sub">Daily sleep (night + naps)</h3><ul class="nights">${days.map((d) => `<li><span>${fmtDay(d.key)}</span><div class="bar"><i style="width:${Math.min(100, (d.total / 540) * 100)}%"></i></div><b>${minsToHM(d.total)}</b>${d.sessions.length > 1 ? `<small class="nap-note">${breakdown(d)}</small>` : ''}</li>`).join('')}</ul>`;
   }
   html += `<small class="muted">Updated ${fmtTime(h.at)} · syncs every hour${status === 'reconnect' ? ` · <button class="link" data-connect="google">Reconnect</button>` : ''}</small>`;
   return html;
+}
+
+// Minutes from whatever form the API used: a number, a number sent as text ("360"),
+// or a duration ("21600s"). Anything implausible falls back to the session's start→end span.
+function toMinutes(v, start, end) {
+  const span = start && end ? Math.round((end - start) / 60000) : null;
+  let m = null;
+  if (typeof v === 'number') m = v;
+  else if (typeof v === 'string') {
+    const t = v.trim();
+    if (/^\d+(\.\d+)?s$/.test(t)) m = parseFloat(t) / 60;
+    else if (/^PT/i.test(t)) { const x = t.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/i); m = x ? (+x[1] || 0) * 60 + (+x[2] || 0) + (+x[3] || 0) / 60 : null; }
+    else if (/^\d+(\.\d+)?$/.test(t)) m = parseFloat(t);
+  }
+  if (m != null && span != null && m > span * 1.05 + 1) m = m / 60 <= span * 1.05 ? m / 60 : span; // seconds sent as "minutes"
+  if (m == null || !isFinite(m) || m < 0 || m > 24 * 60) m = span;
+  return m == null ? null : Math.round(m);
+}
+
+// Group sleep sessions into days (by the date you woke up) and add naps to the night.
+function sleepDays(sessions = []) {
+  const seen = new Set(); const byDay = new Map();
+  for (const x of sessions) {
+    if (!x.start || !x.end || x.minutes == null) continue;
+    const sig = x.start.getTime() + '|' + x.end.getTime(); if (seen.has(sig)) continue; seen.add(sig);
+    const key = ymd(x.end);
+    if (!byDay.has(key)) byDay.set(key, []);
+    byDay.get(key).push(x);
+  }
+  return [...byDay.entries()].map(([key, list]) => {
+    list.sort((a, b) => a.start - b.start);
+    const main = list.reduce((a, b) => (b.minutes > a.minutes ? b : a));
+    return { key, sessions: list, main, total: list.reduce((sum, x) => sum + x.minutes, 0) };
+  }).sort((a, b) => b.key.localeCompare(a.key));
 }
 
 // Health data that arrived through sync has its dates as text; turn them back into dates.
@@ -371,7 +410,7 @@ function normaliseHealth(h) {
   const d = (x) => (x == null ? x : x instanceof Date ? x : new Date(x));
   return {
     ...h,
-    sleep: (h.sleep || []).map((s) => ({ ...s, start: d(s.start), end: d(s.end) })).filter((s) => s.start && !isNaN(s.start)),
+    sleep: (h.sleep || []).map((s) => { const start = d(s.start), end = d(s.end); return { ...s, start, end, minutes: toMinutes(s.minutes, start, end) }; }).filter((s) => s.start && !isNaN(s.start)),
     hr: (h.hr || []).map((x) => ({ ...x, t: d(x.t) })).filter((x) => x.t && !isNaN(x.t)),
     resting: h.resting || [],
   };
