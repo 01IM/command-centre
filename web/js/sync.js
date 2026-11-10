@@ -201,7 +201,8 @@ async function cycle() {
     }
   }
   for (const s of SYNC_SETTINGS) {
-    const at = state.settings._ts?.[s] || 0; const k = `_settings|${s}`;
+    // settings saved before sync existed have no timestamp: send them once with the oldest possible time
+    const at = state.settings._ts?.[s] || (state.settings[s] !== undefined ? 1 : 0); const k = `_settings|${s}`;
     if (at > (pushed[k] || 0) && state.settings[s] !== undefined) {
       out.push({ collection: '_settings', id: s, updated_at: at, deleted: false, payload: await encryptJSON(key, state.settings[s]) }); pushed[k] = at;
     }
