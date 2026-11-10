@@ -246,7 +246,7 @@ async function todoBlock({ max = 7, showAdd = true } = {}) {
   const ms = status === 'disconnected' ? [] : cache.todo?.tasks || [];
   const tasks = [...list('localTasks').filter((t) => !t.done).map((t) => ({ ...t, local: true })), ...ms];
   const sorted = [...tasks].sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999') || (b.importance === 'high') - (a.importance === 'high'));
-  const add = showAdd ? `<form class="quick-add" data-form="todo"><input name="title" placeholder="Add a task…" autocomplete="off"><input name="due" type="date" title="Due date (optional)"><button class="btn primary sm">Add</button></form>` : '';
+  const add = showAdd ? `<form class="quick-add" data-form="todo"><input name="title" placeholder="Add a task…" autocomplete="off"><input name="due" type="text" placeholder="Due date" title="Due date (optional)" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"><button class="btn primary sm">Add</button></form>` : '';
   const note = '';
   const reconnect = status === 'reconnect' ? `<div class="warn">Microsoft needs a quick reconnect. <button class="link" data-connect="microsoft">Reconnect</button></div>` : '';
   const items = sorted.slice(0, max);
