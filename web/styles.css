@@ -728,3 +728,11 @@ body[data-device=phone] #cube { display: none; }
   .file-actions .icon-btn, .exp-badge { -webkit-backdrop-filter: none; backdrop-filter: none; }
   body { -webkit-text-size-adjust: 100%; text-rendering: optimizeLegibility; }
 }
+/* iOS draws a blur under the status bar: start the page below that zone */
+@media (max-width: 640px) {
+  .content { padding-top: calc(env(safe-area-inset-top) + 34px) !important; }
+}
+@media (display-mode: standalone) and (min-width: 641px) and (max-width: 1366px) {
+  .content { padding-top: calc(env(safe-area-inset-top) + 28px) !important; }
+  .sidebar { padding-top: calc(env(safe-area-inset-top) + 28px) !important; }
+}
