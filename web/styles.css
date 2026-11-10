@@ -774,3 +774,5 @@ body[data-device=phone] #cube { display: none; }
 .card-stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .card-stack > .card { margin: 0 !important; }
 .card-stack > .card:last-child { flex: 1; }
+.cal-list small.cal-ok { color: var(--ok); }
+.cal-list small.cal-bad { color: var(--bad); white-space: normal; }
