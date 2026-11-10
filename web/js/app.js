@@ -111,7 +111,13 @@ const VIEWS = [
   ['home', 'Home'], ['schedule', 'Calendar'], ['tasks', 'To-do'], ['weather', 'Weather'], ['goals', 'Goals'],
   ['files', 'Files'], ['documents', 'Expiry dates'], ['travel', 'Travel'], ['health', 'Sleep & HR'], ['notes', 'Notes'], ['settings', 'Settings'],
 ];
-const MOBILE_TABS = ['home', 'schedule', 'tasks', 'files', 'more'];
+// Which device we're on: the Windows app, an iPhone-size screen or an iPad-size screen.
+// Some sections are left out of the phone and tablet versions on purpose.
+const deviceType = () => (isApp() ? 'desktop' : matchMedia('(max-width: 640px)').matches ? 'phone' : 'tablet');
+const HIDDEN_ON = { phone: ['files', 'weather', 'cube', 'prayer'], tablet: ['files', 'weather', 'prayer'], desktop: [] };
+const hasFeature = (f) => !HIDDEN_ON[deviceType()].includes(f);
+const views = () => VIEWS.filter(([id]) => hasFeature(id));
+const mobileTabs = () => ['home', 'schedule', 'tasks', hasFeature('files') ? 'files' : 'documents', 'more'];
 const people = () => (state.settings.people?.length ? state.settings.people : ['Imran']);
 const filesView = { person: null, category: 'All', q: '' };
 let docsPerson = 'All';
@@ -123,7 +129,9 @@ const fmt24 = (d) => { const x = D(d); return String(x.getHours()).padStart(2, '
 let current = 'home';
 
 function renderNav() {
-  $('#nav').innerHTML = VIEWS.map(([id, label]) => `<a href="#${id}" class="${id === current ? 'active' : ''}">${icon(id)}<span>${label}</span></a>`).join('');
+  document.body.dataset.device = deviceType();
+  $('#nav').innerHTML = views().map(([id, label]) => `<a href="#${id}" class="${id === current ? 'active' : ''}">${icon(id)}<span>${label}</span></a>`).join('');
+  const MOBILE_TABS = mobileTabs();
   $('#tabs').innerHTML = MOBILE_TABS.map((id) => {
     if (id === 'more') return `<a href="#more" class="${!MOBILE_TABS.includes(current) ? 'active' : ''}">${icon('more')}<span>More</span></a>`;
     const [, label] = VIEWS.find((v) => v[0] === id);
@@ -133,7 +141,7 @@ function renderNav() {
 
 function route() {
   const id = (location.hash || '#home').slice(1);
-  current = id === 'more' || VIEWS.some((v) => v[0] === id) ? id : 'home';
+  current = id === 'more' || views().some((v) => v[0] === id) ? id : 'home';
   renderNav();
   doRender(true);
   window.scrollTo({ top: 0 });
@@ -360,9 +368,9 @@ const VIEW_RENDER = {
       <ul class="world">${WORLD.map(([city, tz]) => `<li data-zone="${tz}">${clockFace(38)}<div><b data-zone-text>${zoneTime(tz, now).text}</b><small>${city}<em data-zone-day></em></small></div></li>`).join('')}</ul></div></div>
     <div class="grid home-grid">
       ${card('Meetings today', await meetingsBlock(), { link: 'schedule', cls: 'span2', action: '<button class="icon-btn" data-refresh="calendar" title="Refresh">↻</button>' })}
-      ${card('Prayer times', prayerBlock(), { cls: 'prayer' })}
+      ${!hasFeature('prayer') ? '' : card('Prayer times', prayerBlock(), { cls: 'prayer' })}
       ${card('To-do', await todoBlock(), { link: 'tasks', action: '<button class="icon-btn" data-refresh="todo" title="Refresh">↻</button>' })}
-      ${card('Weather', weatherBlock(), { link: 'weather', cls: 'weather-card', action: '<button class="icon-btn" data-refresh="weather" title="Refresh">↻</button>' })}
+      ${!hasFeature('weather') ? '' : card('Weather', weatherBlock(), { link: 'weather', cls: 'weather-card', action: '<button class="icon-btn" data-refresh="weather" title="Refresh">↻</button>' })}
       ${card('Plans', plansBlock(), { link: 'schedule', action: '<button class="icon-btn" data-add="plan" title="Add plan">+</button>' })}
       ${card('Document expiry', docsAlertBlock(), { link: 'documents' })}
       ${card('Sleep & heart rate', await healthBlock(), { link: 'health', action: '<button class="icon-btn" data-refresh="health" title="Refresh">↻</button>' })}
@@ -490,7 +498,7 @@ const VIEW_RENDER = {
       return items.length ? `<h3 class="sub">${title}</h3><div class="doc-grid">${items.map(docCard).join('')}</div>` : '';
     }).join('');
     return `<div class="page-head"><h1>Expiry dates</h1><div class="actions"><button class="btn primary" data-add="doc">+ Add document</button></div></div>
-      <p class="muted">Passports, IDs, visas and licences for you and your family. You'll get reminders 90, 30 and 7 days before anything expires. Keep the scans themselves in <a class="link" href="#files">Files</a>.</p>
+      <p class="muted">Passports, IDs, visas and licences for you and your family. You'll get reminders 90, 30 and 7 days before anything expires.${hasFeature('files') ? ' Keep the scans themselves in <a class="link" href="#files">Files</a>.' : ''}</p>
       <div class="people-tabs small">${['All', ...ppl].map((p) => `<button class="person ${p === pf ? 'on' : ''}" data-doc-person="${esc(p)}">${esc(p)}</button>`).join('')}<button class="person add" data-add-person>+ Add family member</button></div>
       ${docs.length ? sections : card('Nothing added yet', empty('Add your passport, Kuwait civil ID, e-visas, visa stickers and driving licence. You can attach a photo or scan of each.', ' <button class="link" data-add="doc">Add the first one</button>'))}`;
   },
@@ -532,7 +540,7 @@ const VIEW_RENDER = {
   },
 
   async more() {
-    return `<div class="page-head"><h1>More</h1><div class="actions"><button class="btn ghost" data-theme-flip>${document.documentElement.dataset.theme === 'dark' ? 'Light mode' : 'Dark mode'}</button></div></div><div class="more-grid">${VIEWS.filter(([id]) => !MOBILE_TABS.includes(id)).map(([id, label]) => `<a href="#${id}" class="card more-tile">${icon(id)}<span>${label}</span></a>`).join('')}</div><p class="muted made-m">Made for Imran by Claude</p>`;
+    return `<div class="page-head"><h1>More</h1><div class="actions"><button class="btn ghost" data-theme-flip>${document.documentElement.dataset.theme === 'dark' ? 'Light mode' : 'Dark mode'}</button></div></div><div class="more-grid">${views().filter(([id]) => !mobileTabs().includes(id)).map(([id, label]) => `<a href="#${id}" class="card more-tile">${icon(id)}<span>${label}</span></a>`).join('')}</div><p class="muted made-m">Made for Imran by Claude</p>`;
   },
 
   async settings() {
@@ -706,7 +714,7 @@ async function docForm(d = {}) {
       { name: 'stay', label: 'Max stay (visas)', value: d.stay, placeholder: 'e.g. 90 days per visit' },
       { name: 'ref', label: 'Reference (last 4 digits only)', value: d.ref, placeholder: 'e.g. …4417', hint: 'Avoid full document numbers.' },
       { name: 'files', label: linked.size ? `Add more scans (${linked.size} attached)` : 'Upload scan or photo (saved to Files)', type: 'file', accept: 'image/*,application/pdf', multiple: true, wide: true },
-      { name: 'link', label: 'Or link a file already in Files', type: 'select', options: choices, value: '', wide: true },
+      ...(hasFeature('files') ? [{ name: 'link', label: 'Or link a file already in Files', type: 'select', options: choices, value: '', wide: true }] : []),
       ...(linked.size ? [{ name: 'unlink', label: 'Attached files', type: 'select', options: [['', `Keep all ${linked.size}`], ...[...linked].map((p) => [p, 'Detach ' + p.split('/').pop()])], value: '', wide: true, hint: 'Detaching keeps the file in Files.' }] : []),
       { name: 'notes', label: 'Notes', type: 'textarea', rows: 2, value: d.notes, wide: true },
     ],
@@ -1101,6 +1109,8 @@ async function refresh(what, manual = false) {
     }
     if (what === 'todo') { if (await I.connectionStatus('microsoft') === 'disconnected') return; await I.syncTodo(); cache.todo = await kvGet('cache:todo'); }
     if (what === 'health') { if (await I.connectionStatus('google') === 'disconnected') return; await I.syncHealth(); cache.health = await kvGet('cache:health'); }
+    if (what === 'weather' && !hasFeature('weather')) return;
+    if (what === 'prayer' && !hasFeature('prayer')) return;
     if (what === 'weather') { cache.weather = await getWeather({ force: manual }).catch((e) => ({ error: errText(e) })); }
     if (what === 'prayer') { cache.prayer = await getPrayerSchedule().catch((e) => ({ error: errText(e) })); }
     LAST[what] = Date.now();
@@ -1231,6 +1241,8 @@ async function start() {
   await loadCaches();
   const cube = await mountCube($('#cube'));
   addEventListener('hashchange', route);
+  let lastDevice = deviceType();
+  addEventListener('resize', () => { const d = deviceType(); if (d !== lastDevice) { lastDevice = d; route(); } });
   route();
   await Sync.init();
   S.onChange((ev) => {

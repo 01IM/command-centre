@@ -270,6 +270,13 @@ async function syncFiles(incomingFiles, pushed) {
     remote[id] = { ...meta, updated_at: at }; known[f.path] = f.modified; have[id] = at; pushed[`_files|${id}`] = at;
     status.files.up++; changed = true;
   }
+  // The iPhone / iPad versions don't show Files: they only upload scans attached there (e.g. to an
+  // expiry date) and never download the whole vault.
+  if (!isApp()) {
+    if (rows.length) await upsertRows(rows);
+    await kvSet('sync:remoteFiles', remote); await kvSet('sync:knownFiles', known); await kvSet('sync:haveFiles', have);
+    return changed;
+  }
   // 2) local deletions → cloud (only if the cloud copy is the one we had)
   for (const path of Object.keys(known)) {
     if (localByPath.has(path)) continue;
