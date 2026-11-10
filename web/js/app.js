@@ -112,7 +112,7 @@ function confirmInline(form) {
 // ---------- navigation ----------
 const VIEWS = [
   ['home', 'Home'], ['schedule', 'Calendar'], ['tasks', 'To-do'], ['weather', 'Weather'], ['goals', 'Goals'],
-  ['budget', 'Budget'], ['files', 'Files'], ['documents', 'Expiry dates'], ['travel', 'Travel'], ['health', 'Sleep & HR'], ['notes', 'Notes'], ['settings', 'Settings'],
+  ['budget', 'Finances'], ['files', 'Files'], ['documents', 'Expiry dates'], ['travel', 'Travel'], ['health', 'Sleep & HR'], ['notes', 'Notes'], ['settings', 'Settings'],
 ];
 // Which device we're on: the Windows app, an iPhone-size screen or an iPad-size screen.
 // Some sections are left out of the phone and tablet versions on purpose.
@@ -434,7 +434,7 @@ const VIEW_RENDER = {
       ${card('Plans', await safe(() => plansBlock(), 'plans'), { link: 'schedule', action: '<button class="icon-btn" data-add="plan" title="Add plan">+</button>' })}
       <div class="card-stack">
         ${card('Document expiry', await safe(() => docsAlertBlock({ max: 3 }), 'docs'), { link: 'documents', cls: 'compact' })}
-        ${card('Budget', await safe(() => budgetBlock(), 'budget'), { link: 'budget', cls: 'compact', action: `<span class="card-actions">${eyeBtn()}<button class="icon-btn" data-add="budget" title="Add">+</button></span>` })}
+        ${card('Finances', await safe(() => budgetBlock(), 'budget'), { link: 'budget', cls: 'compact', action: `<span class="card-actions">${eyeBtn()}<button class="icon-btn" data-add="budget" title="Add">+</button></span>` })}
       </div>
       ${card('Sleep & heart rate', await safe(() => healthBlock(), 'health'), { link: 'health', action: '<button class="icon-btn" data-refresh="health" title="Refresh">↻</button>' })}
       ${card('Goals', await safe(() => goalsBlock(), 'goals'), { link: 'goals', action: '<button class="icon-btn" data-add="goal" title="Add goal">+</button>' })}
@@ -699,7 +699,7 @@ function budgetPage() {
   const total = cats.reduce((s, c) => s + c.total, 0);
   const savedAll = cats.reduce((s, c) => s + c.saved, 0);
   const tabs = `<div class="seg tabs-seg"><button class="btn ${tab === 'expense' ? 'on' : 'ghost'}" data-bud-tab="expense">Expenses</button><button class="btn ${tab === 'wish' ? 'on' : 'ghost'}" data-bud-tab="wish">Wishlist</button></div>`;
-  const head = `<div class="page-head"><h1>Budget</h1><div class="actions">${tabs}${eyeBtn()}<button class="btn primary" data-add="budget" data-kind="${tab}">+ Add ${tab === 'wish' ? 'wish' : 'expense'}</button></div></div>`;
+  const head = `<div class="page-head"><h1>Finances</h1><div class="actions">${tabs}${eyeBtn()}<button class="btn primary" data-add="budget" data-kind="${tab}">+ Add ${tab === 'wish' ? 'wish' : 'expense'}</button></div></div>`;
   const summary = tab === 'expense'
     ? `<div class="stat-row bud-stats"><div class="stat"><strong>${money(total)}</strong><small>total expenses</small></div><div class="stat"><strong>${cats.length}</strong><small>categories</small></div><div class="stat"><strong>${items.length}</strong><small>items</small></div><div class="stat cur"><small>Currency</small><select data-currency>${CURRENCIES.map((c) => `<option ${c === currency() ? 'selected' : ''}>${c}</option>`).join('')}</select></div></div>`
     : `<div class="stat-row bud-stats"><div class="stat"><strong>${money(total)}</strong><small>wishlist total</small></div><div class="stat"><strong>${money(savedAll)}</strong><small>saved so far</small></div><div class="stat"><strong>${money(Math.max(0, total - savedAll))}</strong><small>still to save</small></div><div class="stat cur"><small>Currency</small><select data-currency>${CURRENCIES.map((c) => `<option ${c === currency() ? 'selected' : ''}>${c}</option>`).join('')}</select></div></div>`;
