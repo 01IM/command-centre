@@ -122,7 +122,7 @@ export async function mountCube(root) {
   };
   const save = () => kvSet('cube:solves', solves.slice(0, 1000));
 
-  const setPhase = (p) => { phase = p; timerEl.dataset.phase = p; };
+  const setPhase = (p) => { phase = p; timerEl.dataset.phase = p; window.__cubeRunning = p === 'running' || p === 'ready' || p === 'holding'; };
   const loop = () => { timerEl.textContent = fmt(performance.now() - t0).replace(/\d$/, ''); raf = requestAnimationFrame(loop); };
 
   function press() {
@@ -131,7 +131,7 @@ export async function mountCube(root) {
       const ms = Math.round(performance.now() - t0);
       timerEl.textContent = fmt(ms);
       solves.unshift({ ms, scramble: current, at: Date.now() });
-      save(); current = scramble(); setPhase('stopped'); draw();
+      setPhase('stopped'); current = scramble(); draw(); save();
       return;
     }
     if (phase === 'idle' || phase === 'stopped') {
@@ -147,13 +147,23 @@ export async function mountCube(root) {
   }
 
   const typing = () => /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.querySelector('dialog[open]');
-  document.addEventListener('keydown', (e) => {
-    if (!open || typing()) return;
-    if (phase === 'running') { e.preventDefault(); press(); return; }
+  // While running, the very first key, click or tap anywhere stops the timer (like a real stackmat).
+  const stopNow = (e) => {
+    if (phase !== 'running') return false;
+    e.preventDefault(); e.stopPropagation(); press();
+    return true;
+  };
+  window.addEventListener('keydown', (e) => {
+    if (!open) return;
+    if (stopNow(e)) return;
+    if (typing()) return;
     if (e.code === 'Space' && !e.repeat) { e.preventDefault(); press(); }
-  });
-  document.addEventListener('keyup', (e) => { if (!open || typing()) return; if (e.code === 'Space' || phase === 'stopped') { e.preventDefault(); release(); } });
-  timerEl.addEventListener('pointerdown', (e) => { e.preventDefault(); press(); });
+  }, true);
+  window.addEventListener('keyup', (e) => { if (!open) return; if (phase === 'stopped') { e.preventDefault(); release(); return; } if (typing()) return; if (e.code === 'Space') { e.preventDefault(); release(); } }, true);
+  window.addEventListener('pointerdown', (e) => { if (open) stopNow(e); }, true);
+  window.addEventListener('touchstart', (e) => { if (open && phase === 'running') { e.preventDefault(); press(); } }, { capture: true, passive: false });
+  window.addEventListener('pointerup', () => { if (phase === 'stopped') release(); }, true);
+  timerEl.addEventListener('pointerdown', (e) => { e.preventDefault(); if (phase !== 'stopped') press(); });
   timerEl.addEventListener('pointerup', (e) => { e.preventDefault(); release(); });
   timerEl.addEventListener('pointerleave', () => { if (phase === 'holding' || phase === 'ready') { clearTimeout(holdTimer); setPhase('idle'); } });
 
