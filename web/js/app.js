@@ -156,6 +156,7 @@ function route() {
 // have a form open, so background updates never wipe what you're writing.
 let renderQueued = false, rendering = false, pendingAfter = false;
 function render() {
+  if (window.__cubeRunning) { pendingAfter = true; setTimeout(() => { if (!window.__cubeRunning && pendingAfter) { pendingAfter = false; render(); } }, 1500); return; } // don't disturb a solve
   if (renderQueued) return;
   renderQueued = true;
   requestAnimationFrame(() => { renderQueued = false; doRender(false); });
@@ -633,7 +634,7 @@ const VIEW_RENDER = {
            <div class="row"><button type="submit" class="btn ghost sm" name="mode" value="signin">Sign in</button><span class="spacer"></span><button type="submit" class="btn primary sm" name="mode" value="create">Create account (first device)</button></div>
          </form>`);
     return `<div class="page-head"><h1>Settings</h1></div>
-    <div class="grid">
+    <div class="settings-cols">
       ${syncCard}
       ${card('Calendars', `<p class="muted">Add each calendar you want to see — e.g. your Google calendar and your Plot.it work calendar. They're all merged into one view, each in its own colour.</p>
         <ul class="cal-list">${(await Promise.all(I.calendars().map(async (c) => ({ c, st: await kvGet('cal:status:' + c.id) })))).map(({ c, st }) => `<li><i style="background:${esc(c.color)}"></i><div><b>${esc(c.name)}</b>${st ? `<small class="${st.ok ? 'cal-ok' : 'cal-bad'}">${st.ok ? `✓ ${st.count} event${st.count === 1 ? '' : 's'} found · ${fmtTime(st.at)}${st.calendars ? ' · ' + esc(st.calendars.join(', ')) : ''}` : `⚠ ${esc(st.error || 'error')} · ${fmtTime(st.at)}`}</small>` : !isApp() && c.type === 'caldav' ? '<small>Synced from the Windows app</small>' : ''}<small>${c.type === 'caldav' ? esc(c.user + ' · ' + c.url.replace('https://', '')) : esc(c.url.replace(/^(https?:\/\/[^/]+).*/, '$1/…'))}</small></div><button class="icon-btn" data-cal-edit="${esc(c.id)}" title="Edit">✎</button></li>`).join('') || '<li class="empty">No calendars yet.</li>'}</ul>
@@ -1340,6 +1341,7 @@ async function refresh(what, manual = false) {
 const EVERY = { calendar: 1, todo: 5, weather: 30, prayer: 60, health: 60 }; // minutes
 const HIDDEN_EVERY = { calendar: 5 }; // slower while the window is hidden in the tray
 async function tick() {
+  if (window.__cubeRunning) return; // background updates wait until the solve is done
   for (const [what, mins] of Object.entries(EVERY)) {
     const m = document.hidden && HIDDEN_EVERY[what] ? HIDDEN_EVERY[what] : mins;
     if (!LAST[what] || Date.now() - LAST[what] > m * 60000 - 2000) await refresh(what);

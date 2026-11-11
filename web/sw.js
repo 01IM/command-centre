@@ -1,6 +1,6 @@
 // Offline support for the iPhone / iPad (home-screen) version. Not used by the Windows app.
 // App files: network first (so updates arrive), cached copy when offline. API calls are never cached here.
-const VERSION = 'cc-v12';
+const VERSION = 'cc-v13';
 const SHELL = ['./', 'index.html', 'styles.css', 'manifest.webmanifest',
   'js/app.js', 'js/store.js', 'js/services.js', 'js/oauth.js', 'js/integrations.js', 'js/cube.js', 'js/ical.js',
   'js/net.js', 'js/visuals.js', 'js/vault.js', 'js/sync.js', 'js/crypto.js', 'js/caldav.js',

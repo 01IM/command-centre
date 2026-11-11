@@ -781,3 +781,8 @@ body[data-device=phone] #cube { display: none; }
 .diag h3 { margin-bottom: 10px; }
 .diag pre { white-space: pre-wrap; word-break: break-all; font: 12px/1.5 var(--mono); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; max-height: 60vh; overflow: auto; color: var(--text-2); }
 .viewer:has(.diag) { width: auto; }
+
+/* Settings: cards flow in columns so there are no gaps between cards of different heights */
+.settings-cols { columns: 3 340px; column-gap: 18px; }
+.settings-cols > .card { break-inside: avoid; display: inline-block; width: 100%; margin: 0 0 18px !important; }
+@media (max-width: 640px) { .settings-cols { columns: 1; } }
