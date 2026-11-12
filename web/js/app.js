@@ -1495,10 +1495,22 @@ function holidayList() {
   const openYear = window.__holYear ?? years[0];
   return `<section class="card holidays"><header><h2>Holidays · next 5 years</h2><small class="muted">Kuwait official + Islamic dates</small></header>
     <p class="muted hol-note">Islamic dates follow the Umm al-Qura calendar, calculated ahead for every year. If Kuwait announces a date a day earlier or later after the moon sighting, press ‹ or › next to it — every date in that Islamic month moves with it, on all your devices.</p>
-    ${years.map((y) => `<details class="hol-year" data-hol-year="${y}" ${y === openYear ? 'open' : ''}><summary>${y}<small>${all.filter((h) => h.start.getFullYear() === y && h.official).length} days off</small></summary><ul class="hol-list">${all.filter((h) => h.start.getFullYear() === y).map((h) => `
-      <li class="${h.official ? '' : 'obs'}"><span class="d">${h.start.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</span><b>${esc(h.title)}</b>
-        <span class="pill ${h.official ? 'holiday' : 'obs'}">${h.official ? 'Holiday' : 'Islamic date'}</span>${h.shift ? `<small class="shifted">moved ${h.shift > 0 ? '+' : ''}${h.shift} day${Math.abs(h.shift) > 1 ? 's' : ''}</small>` : ''}
-        ${h.hkey ? `<span class="hol-adj"><button class="icon-btn sm" data-hshift="${h.hkey}:-1" title="One day earlier">‹</button><button class="icon-btn sm" data-hshift="${h.hkey}:1" title="One day later">›</button></span>` : ''}</li>`).join('')}</ul></details>`).join('')}
+    ${years.map((y) => {
+      // one row per holiday: the Eid days are merged into a single line with their date range
+      const rows = [];
+      for (const h of all.filter((x) => x.start.getFullYear() === y)) {
+        const base = h.title.replace(/ \(day \d\)$/, ''); const prev = rows[rows.length - 1];
+        if (prev && prev.title === base && h.start - prev.end < 2 * 864e5) { prev.end = h.start; prev.days++; } else rows.push({ ...h, title: base, end: h.start, days: 1 });
+      }
+      const dm = (d, o) => d.toLocaleDateString('en-GB', o);
+      const range = (r) => r.days === 1 ? dm(r.start, { day: 'numeric', month: 'short' }) : r.start.getMonth() === r.end.getMonth() ? `${r.start.getDate()} – ${dm(r.end, { day: 'numeric', month: 'short' })}` : `${dm(r.start, { day: 'numeric', month: 'short' })} – ${dm(r.end, { day: 'numeric', month: 'short' })}`;
+      const wd = (r) => r.days === 1 ? dm(r.start, { weekday: 'long' }) : `${dm(r.start, { weekday: 'short' })} – ${dm(r.end, { weekday: 'short' })}`;
+      return `<details class="hol-year" data-hol-year="${y}" ${y === openYear ? 'open' : ''}><summary>${y}<small>${all.filter((h) => h.start.getFullYear() === y && h.official).length} days off</small></summary>
+      <div class="hol-table"><div class="hol-row head"><span>Date</span><span>Day</span><span>Holiday</span><span>Type</span><span>Length</span><span>Adjust</span></div>${rows.map((r) => `
+        <div class="hol-row ${r.official ? '' : 'obs'}"><span class="d">${range(r)}</span><span class="wd">${wd(r)}</span><b>${esc(r.title)}${r.shift ? `<small class="shifted">moved ${r.shift > 0 ? '+' : ''}${r.shift} day${Math.abs(r.shift) > 1 ? 's' : ''}</small>` : ''}</b>
+          <span><span class="pill ${r.official ? 'holiday' : 'obs'}">${r.official ? 'Holiday' : 'Islamic date'}</span></span><span class="len">${r.official ? r.days + (r.days > 1 ? ' days' : ' day') : '—'}</span>
+          <span class="hol-adj">${r.hkey ? `<button class="icon-btn sm" data-hshift="${r.hkey}:-1" title="One day earlier">‹</button><button class="icon-btn sm" data-hshift="${r.hkey}:1" title="One day later">›</button>` : ''}</span></div>`).join('')}</div></details>`;
+    }).join('')}
   </section>`;
 }
 
