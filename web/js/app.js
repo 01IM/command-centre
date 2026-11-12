@@ -449,7 +449,7 @@ const VIEW_RENDER = {
     const greet = hr < 5 ? 'Good night' : hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
     const lastNote = list('notes').sort((a, b) => b.updatedAt - a.updatedAt)[0];
     const widgets = [
-      ['meetings', card('Meetings today', await safe(() => meetingsBlock(), 'meetings'), { id: 'meetings', link: 'schedule', action: '<button class="icon-btn" data-refresh="calendar" title="Refresh">↻</button>' })],
+      ['meetings', card('Meetings today', await safe(() => meetingsBlock(), 'meetings'), { id: 'meetings', cls: homeCustom() ? '' : 'span2', link: 'schedule', action: '<button class="icon-btn" data-refresh="calendar" title="Refresh">↻</button>' })],
       hasFeature('prayer') && ['prayer', card('Prayer times', await safe(() => prayerBlock(), 'prayer'), { id: 'prayer', cls: 'prayer' })],
       ['todo', card('To-do', await safe(() => todoBlock(), 'todo'), { id: 'todo', link: 'tasks', action: '<button class="icon-btn" data-refresh="todo" title="Refresh">↻</button>' })],
       hasFeature('weather') && ['weather', card('Weather', await safe(() => weatherBlock(), 'weather'), { id: 'weather', link: 'weather', cls: 'weather-card', action: '<button class="icon-btn" data-refresh="weather" title="Refresh">↻</button>' })],
@@ -464,7 +464,9 @@ const VIEW_RENDER = {
     return `<div class="hero"><button class="avatar-btn hero-avatar ${avatarUrl ? 'has-photo' : ''}" data-avatar-change title="Change profile picture" style="${avatarUrl ? `background-image:url('${avatarUrl}')` : ''}"><span class="initials">IA</span></button><div><h1>${greet}, Imran</h1><p data-clock-date>${now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p></div>
       <div class="clocks"><div class="clock-main"><span class="clock" data-clock>${fmtTime(now)}</span><small>Kuwait</small></div>
       <ul class="world">${WORLD.map(([city, tz]) => `<li data-zone="${tz}">${clockFace(38)}<div><b data-zone-text>${zoneTime(tz, now).text}</b><small>${city}<em data-zone-day></em></small></div></li>`).join('')}</ul></div></div>
-    <div class="grid home-grid">${orderWidgets(widgets, state.settings['homeLayout_' + deviceType()]).map((w) => w[1]).join('')}    </div>`;
+    <div class="grid home-grid">${homeCustom() ? orderWidgets(widgets, state.settings['homeLayout_' + deviceType()]).map((w) => w[1]).join('')
+      // untouched: the original layout — even rows, Document expiry stacked on Finances
+      : widgets.map((w) => (w[0] === 'docs' ? '<div class="card-stack">' + w[1] : w[0] === 'budget' ? w[1] + '</div>' : w[1])).join('')}    </div>`;
   },
 
   async schedule() {
@@ -1473,11 +1475,12 @@ async function loadAvatar() {
 // ---------- Home layout (move / resize widgets) ----------
 let layoutEditPending = false;
 const HOME_DEFAULT_W = { meetings: 2, prayer: 1, todo: 1, weather: 1, plans: 1, docs: 1, budget: 1, health: 1, goals: 1, overwatch: 1, note: 1 };
+function homeCustom() { const l = state.settings['homeLayout_' + deviceType()]; return !!(l?.order?.length || Object.keys(l?.size || {}).length); }
 function mountHomeLayout() {
   const grid = $('#main .home-grid'); if (!grid) return;
   const key = 'homeLayout_' + deviceType();
   mountHome(grid, {
-    device: deviceType(), layout: state.settings[key], defaults: HOME_DEFAULT_W, editing: layoutEditPending || window.__layoutEditing,
+    device: deviceType(), layout: state.settings[key], classic: !homeCustom(), defaults: HOME_DEFAULT_W, editing: layoutEditPending || window.__layoutEditing,
     save: (l) => { setSetting(key, l).then(() => Sync.soon?.(2000)).catch((e) => console.warn(e)); },
   });
   layoutEditPending = false;
