@@ -980,3 +980,6 @@ border-radius: 8px; background: color-mix(in srgb, var(--hue) 16%, transparent);
 .meet-toggle.open i { transform: rotate(180deg); }
 .events li.past { opacity: .5; }
 .events li .ended { color: var(--text-3); font-size: 11.5px; white-space: nowrap; }
+.meet-exp svg { transition: transform .25s var(--ease); display: block; }
+.meet-exp.open { color: var(--accent); }
+.meet-exp.open svg { transform: rotate(180deg); }
