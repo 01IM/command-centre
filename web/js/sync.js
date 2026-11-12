@@ -11,7 +11,7 @@ import * as V from './vault.js';
 import { isApp } from './net.js';
 
 // Settings that follow you between devices (device-only things like theme, sign-ins and secrets stay put).
-const SYNC_SETTINGS = ['people', 'calendars', 'calendarLinks', 'hiddenCalendars', 'location', 'notifyMeetings', 'notifyPrayer', 'notifyDocs', 'prayerMethod', 'icsProxy', 'currency'];
+const SYNC_SETTINGS = ['people', 'calendars', 'calendarLinks', 'hiddenCalendars', 'location', 'notifyMeetings', 'notifyPrayer', 'notifyDocs', 'prayerMethod', 'icsProxy', 'currency', 'homeLayout_desktop', 'homeLayout_tablet', 'homeLayout_phone'];
 
 let cfg = null;      // { url, anon, email, uid, refresh_token, access_token, expires_at, salt }
 let key = null;      // CryptoKey (non-extractable), kept in IndexedDB so you only type the passphrase once per device

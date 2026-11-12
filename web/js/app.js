@@ -5,6 +5,7 @@ import { disconnect } from './oauth.js';
 import { isApp, openExternal, joinMeeting } from './net.js';
 import { wxIcon, moonInfo, moonSVG, clockFace, zoneTime } from './visuals.js';
 import { mountCube } from './cube.js';
+import { mountHome, homeLayout, orderWidgets } from './layout.js';
 import * as V from './vault.js';
 import * as Sync from './sync.js';
 
@@ -145,6 +146,7 @@ function renderNav() {
 }
 
 function route() {
+  homeLayout()?.edit(false);
   const id = (location.hash || '#home').slice(1);
   current = id === 'more' || views().some((v) => v[0] === id) ? id : 'home';
   renderNav();
@@ -156,6 +158,7 @@ function route() {
 // have a form open, so background updates never wipe what you're writing.
 let renderQueued = false, rendering = false, pendingAfter = false;
 function render() {
+  if (window.__layoutEditing) { pendingAfter = true; return; } // finish arranging first
   if (window.__cubeRunning) { pendingAfter = true; setTimeout(() => { if (!window.__cubeRunning && pendingAfter) { pendingAfter = false; render(); } }, 1500); return; } // don't disturb a solve
   if (renderQueued) return;
   renderQueued = true;
@@ -179,6 +182,7 @@ async function doRender(entering, force = false) {
     main.innerHTML = html;
     if (entering) { void main.offsetWidth; requestAnimationFrame(() => main.classList.remove('enter')); }
     bindView(main);
+    if (current === 'home') mountHomeLayout();
     liveUpdate();
   } finally {
     rendering = false;
@@ -218,8 +222,8 @@ function currentSeason() {
 async function safe(fn, label) {
   try { return await fn(); } catch (e) { console.error(label, e); return `<div class="empty">This section couldn’t load (${esc(errText(e)).slice(0, 80)}).</div>`; }
 }
-function card(title, body, { action = '', cls = '', link = '' } = {}) {
-  return `<section class="card ${cls}"><header><h2>${link ? `<a href="#${link}">${esc(title)}</a>` : esc(title)}</h2>${action}</header>${body}</section>`;
+function card(title, body, { action = '', cls = '', link = '', id = '' } = {}) {
+  return `<section class="card ${cls}"${id ? ` data-widget="${id}"` : ''}><header><h2>${link ? `<a href="#${link}">${esc(title)}</a>` : esc(title)}</h2>${action}</header>${body}</section>`;
 }
 const empty = (text, cta = '') => `<div class="empty">${esc(text)}${cta}</div>`;
 
@@ -247,20 +251,36 @@ async function meetingsBlock({ days = 1, max = 6 } = {}) {
   }).join('')}</ul>`;
 }
 
-async function todoBlock({ max = 7, showAdd = true } = {}) {
+// Recurring to-dos: `repeat` holds the weekdays (0 = Sun … 6 = Sat) the task comes back on; `doneOn` is the day it was last ticked.
+const REPEATS = { mon_thu: [1, 2, 3, 4], daily: [0, 1, 2, 3, 4, 5, 6], sun_thu: [0, 1, 2, 3, 4] };
+const DAY3 = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const repeatLabel = (r) => { const k = Object.keys(REPEATS).find((x) => REPEATS[x].join() === r.join()); return k === 'daily' ? 'Every day' : k === 'mon_thu' ? 'Mon–Thu' : k === 'sun_thu' ? 'Sun–Thu' : r.map((d) => DAY3[d]).join(', '); };
+const repeatsToday = (t) => t.repeat?.includes(new Date().getDay());
+const nextRepeat = (t) => { for (let i = 1; i <= 7; i++) { const d = new Date(Date.now() + i * 864e5); if (t.repeat.includes(d.getDay())) return i === 1 ? 'tomorrow' : DAY3[d.getDay()]; } return ''; };
+
+async function todoBlock({ max = 7, showAdd = true, page = false } = {}) {
   const status = await I.connectionStatus('microsoft');
   const ms = status === 'disconnected' ? [] : cache.todo?.tasks || [];
-  const tasks = [...list('localTasks').filter((t) => !t.done).map((t) => ({ ...t, local: true })), ...ms];
-  const sorted = [...tasks].sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999') || (b.importance === 'high') - (a.importance === 'high'));
-  const add = showAdd ? `<form class="quick-add" data-form="todo"><input name="title" placeholder="Add a task…" autocomplete="off"><input name="due" type="text" placeholder="Due date" title="Due date (optional)" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"><button class="btn primary sm">Add</button></form>` : '';
+  const today = ymd(new Date());
+  // A recurring task ticked today disappears from Home until its next day; the To-do page keeps it (faded) so it can be un-ticked or edited.
+  const local = list('localTasks').filter((t) => (t.repeat?.length ? page || (repeatsToday(t) && t.doneOn !== today) : !t.done)).map((t) => {
+    if (!t.repeat?.length) return { ...t, local: true };
+    const on = repeatsToday(t);
+    return { ...t, local: true, recurring: true, offDay: !on, doneToday: on && t.doneOn === today };
+  });
+  const tasks = [...local, ...ms];
+  const rank = (t) => (t.offDay ? 3 : t.doneToday ? 2 : t.recurring ? 0 : 1);
+  const sorted = [...tasks].sort((a, b) => rank(a) - rank(b) || (a.due || '9999').localeCompare(b.due || '9999') || (b.importance === 'high') - (a.importance === 'high'));
+  const add = showAdd ? `<form class="quick-add" data-form="todo"><input name="title" placeholder="Add a task…" autocomplete="off"><input name="due" type="text" placeholder="Due date" title="Due date (optional)" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"><button class="btn primary sm">Add</button>
+    <label class="repeat-opt" title="Comes back every Monday, Tuesday, Wednesday and Thursday"><input type="checkbox" name="repeat" value="mon_thu"><span>↻ Repeat Mon–Thu</span></label></form>` : '';
   const note = '';
   const reconnect = status === 'reconnect' ? `<div class="warn">Microsoft needs a quick reconnect. <button class="link" data-connect="microsoft">Reconnect</button></div>` : '';
   const items = sorted.slice(0, max);
   return reconnect + add + (items.length ? `<ul class="tasks">${items.map((t) => {
-    const dd = t.due ? daysUntil(t.due) : null;
-    return `<li><button class="check" data-done="${esc(t.id)}" data-list="${esc(t.listId || '')}" data-local="${t.local ? 1 : ''}" aria-label="Complete"></button>
+    const dd = t.due && !t.recurring ? daysUntil(t.due) : null;
+    return `<li class="${t.doneToday ? 'done-today' : ''}${t.offDay ? ' off-day' : ''}"><button class="check${t.doneToday ? ' on' : ''}" data-done="${esc(t.id)}" data-list="${esc(t.listId || '')}" data-local="${t.local ? 1 : ''}" ${t.offDay ? 'disabled' : ''} aria-label="${t.doneToday ? 'Mark not done' : 'Complete'}"></button>
       <span class="t">${t.importance === 'high' ? '<b class="star">★</b> ' : ''}${esc(t.title)}</span>
-      ${dd != null ? `<small class="${dd < 0 ? 'overdue' : dd <= 1 ? 'soon' : ''}">${relDays(dd)}</small>` : t.list ? `<small>${esc(t.list)}</small>` : ''}${t.local ? `<button class="icon-btn sm" data-edit-task="${esc(t.id)}" title="Edit">✎</button>` : ''}</li>`;
+      ${t.recurring ? `<small class="repeat-tag" title="Repeats ${repeatLabel(t.repeat)}">↻ ${t.offDay ? 'Next ' + nextRepeat(t) : t.doneToday ? 'Done · back ' + nextRepeat(t) : repeatLabel(t.repeat)}</small>` : dd != null ? `<small class="${dd < 0 ? 'overdue' : dd <= 1 ? 'soon' : ''}">${relDays(dd)}</small>` : t.list ? `<small>${esc(t.list)}</small>` : ''}${t.local ? `<button class="icon-btn sm" data-edit-task="${esc(t.id)}" title="Edit">✎</button>` : ''}</li>`;
   }).join('')}</ul>${sorted.length > max ? `<a class="more" href="#tasks">+${sorted.length - max} more</a>` : ''}` : empty('All clear.')) + note;
 }
 
@@ -367,6 +387,7 @@ async function healthBlock({ detail = false } = {}) {
     <div><small>Latest HR</small><strong>${latest ? latest.bpm + ' <em>bpm</em>' : '—'}</strong><small>${latest ? fmtTime(latest.t) : h.hrError ? 'Not available' : ''}</small></div>
   </div>`;
   if (hrs.length > 1) html += `<div class="spark-wrap">${sparkline(hrs)}<small>24 h heart rate · ${min}–${max} bpm</small></div>`;
+  if (h.at) html += `<small class="muted synced-at">Checked ${fmtTime(new Date(h.at))}</small>`;
   if (detail && days.length) {
     html += `<h3 class="sub">Daily sleep (night + naps)</h3><ul class="nights">${days.map((d) => `<li><span>${fmtDay(d.key)}</span><div class="bar"><i style="width:${Math.min(100, (d.total / 540) * 100)}%"></i></div><b>${minsToHM(d.total)}</b>${d.sessions.length > 1 ? `<small class="nap-note">${breakdown(d)}</small>` : ''}</li>`).join('')}</ul>`;
   }
@@ -426,24 +447,24 @@ const VIEW_RENDER = {
     const now = new Date();
     const hr = now.getHours();
     const greet = hr < 5 ? 'Good night' : hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
-    return `<div class="hero"><div><h1>${greet}, Imran</h1><p data-clock-date>${now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p></div>
+    const lastNote = list('notes').sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    const widgets = [
+      ['meetings', card('Meetings today', await safe(() => meetingsBlock(), 'meetings'), { id: 'meetings', link: 'schedule', action: '<button class="icon-btn" data-refresh="calendar" title="Refresh">↻</button>' })],
+      hasFeature('prayer') && ['prayer', card('Prayer times', await safe(() => prayerBlock(), 'prayer'), { id: 'prayer', cls: 'prayer' })],
+      ['todo', card('To-do', await safe(() => todoBlock(), 'todo'), { id: 'todo', link: 'tasks', action: '<button class="icon-btn" data-refresh="todo" title="Refresh">↻</button>' })],
+      hasFeature('weather') && ['weather', card('Weather', await safe(() => weatherBlock(), 'weather'), { id: 'weather', link: 'weather', cls: 'weather-card', action: '<button class="icon-btn" data-refresh="weather" title="Refresh">↻</button>' })],
+      ['plans', card('Plans', await safe(() => plansBlock(), 'plans'), { id: 'plans', link: 'schedule', action: '<button class="icon-btn" data-add="plan" title="Add plan">+</button>' })],
+      ['docs', card('Document expiry', await safe(() => docsAlertBlock({ max: 3 }), 'docs'), { id: 'docs', link: 'documents', cls: 'compact' })],
+      ['budget', card('Finances', await safe(() => budgetBlock(), 'budget'), { id: 'budget', link: 'budget', cls: 'compact', action: `<span class="card-actions">${eyeBtn()}<button class="icon-btn" data-add="budget" title="Add">+</button></span>` })],
+      ['health', card('Sleep & heart rate', await safe(() => healthBlock(), 'health'), { id: 'health', link: 'health', action: '<button class="icon-btn" data-refresh="health" title="Refresh">↻</button>' })],
+      ['goals', card('Goals', await safe(() => goalsBlock(), 'goals'), { id: 'goals', link: 'goals', action: '<button class="icon-btn" data-add="goal" title="Add goal">+</button>' })],
+      ['overwatch', card('Overwatch', await safe(() => overwatchBlock(), 'overwatch'), { id: 'overwatch', cls: 'ow-card' })],
+      ['note', card('Quick note', `<form data-form="quicknote" class="quick-note"><textarea name="text" rows="3" placeholder="Jot something down…"></textarea><button class="btn primary sm">Save note</button></form>${lastNote ? `<a class="more" href="#notes">Last: ${esc(lastNote.text.slice(0, 60))}${lastNote.text.length > 60 ? '…' : ''}</a>` : ''}`, { id: 'note' })],
+    ].filter(Boolean);
+    return `<div class="hero"><button class="avatar-btn hero-avatar ${avatarUrl ? 'has-photo' : ''}" data-avatar-change title="Change profile picture" style="${avatarUrl ? `background-image:url('${avatarUrl}')` : ''}"><span class="initials">IA</span></button><div><h1>${greet}, Imran</h1><p data-clock-date>${now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p></div>
       <div class="clocks"><div class="clock-main"><span class="clock" data-clock>${fmtTime(now)}</span><small>Kuwait</small></div>
       <ul class="world">${WORLD.map(([city, tz]) => `<li data-zone="${tz}">${clockFace(38)}<div><b data-zone-text>${zoneTime(tz, now).text}</b><small>${city}<em data-zone-day></em></small></div></li>`).join('')}</ul></div></div>
-    <div class="grid home-grid">
-      ${card('Meetings today', await safe(() => meetingsBlock(), 'meetings'), { link: 'schedule', cls: 'span2', action: '<button class="icon-btn" data-refresh="calendar" title="Refresh">↻</button>' })}
-      ${!hasFeature('prayer') ? '' : card('Prayer times', await safe(() => prayerBlock(), 'prayer'), { cls: 'prayer' })}
-      ${card('To-do', await safe(() => todoBlock(), 'todo'), { link: 'tasks', action: '<button class="icon-btn" data-refresh="todo" title="Refresh">↻</button>' })}
-      ${!hasFeature('weather') ? '' : card('Weather', await safe(() => weatherBlock(), 'weather'), { link: 'weather', cls: 'weather-card', action: '<button class="icon-btn" data-refresh="weather" title="Refresh">↻</button>' })}
-      ${card('Plans', await safe(() => plansBlock(), 'plans'), { link: 'schedule', action: '<button class="icon-btn" data-add="plan" title="Add plan">+</button>' })}
-      <div class="card-stack">
-        ${card('Document expiry', await safe(() => docsAlertBlock({ max: 3 }), 'docs'), { link: 'documents', cls: 'compact' })}
-        ${card('Finances', await safe(() => budgetBlock(), 'budget'), { link: 'budget', cls: 'compact', action: `<span class="card-actions">${eyeBtn()}<button class="icon-btn" data-add="budget" title="Add">+</button></span>` })}
-      </div>
-      ${card('Sleep & heart rate', await safe(() => healthBlock(), 'health'), { link: 'health', action: '<button class="icon-btn" data-refresh="health" title="Refresh">↻</button>' })}
-      ${card('Goals', await safe(() => goalsBlock(), 'goals'), { link: 'goals', action: '<button class="icon-btn" data-add="goal" title="Add goal">+</button>' })}
-      ${card('Overwatch', await safe(() => overwatchBlock(), 'overwatch'), { cls: 'ow-card' })}
-      ${card('Quick note', `<form data-form="quicknote" class="quick-note"><textarea name="text" rows="3" placeholder="Jot something down…"></textarea><button class="btn primary sm">Save note</button></form>${(() => { const n = list('notes').sort((a, b) => b.updatedAt - a.updatedAt)[0]; return n ? `<a class="more" href="#notes">Last: ${esc(n.text.slice(0, 60))}${n.text.length > 60 ? '…' : ''}</a>` : ''; })()}`)}
-    </div>`;
+    <div class="grid home-grid">${orderWidgets(widgets, state.settings['homeLayout_' + deviceType()]).map((w) => w[1]).join('')}    </div>`;
   },
 
   async schedule() {
@@ -505,7 +526,7 @@ const VIEW_RENDER = {
   async tasks() {
     const lists = cache.todo?.lists || [];
     return `<div class="page-head"><h1>To-do</h1><div class="actions"><button class="btn ghost" data-refresh="todo">↻ Refresh</button></div></div>
-      <section class="card">${await todoBlock({ max: 200 })}${lists.length ? `<small class="muted">Includes Microsoft To Do · ${lists.map((l) => esc(l.name)).join(', ')}</small>` : ''}</section>
+      <section class="card">${await todoBlock({ max: 200, page: true })}${lists.length ? `<small class="muted">Includes Microsoft To Do · ${lists.map((l) => esc(l.name)).join(', ')}</small>` : ''}</section>
       ${(() => { const done = list('localTasks').filter((t) => t.done).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 10); return done.length ? `<section class="card"><h2>Recently completed</h2><ul class="tasks done-list">${done.map((t) => `<li><button class="check on" data-undo="${esc(t.id)}" title="Mark as not done"></button><span class="t">${esc(t.title)}</span><small>${fmtDate(t.updatedAt, { day: 'numeric', month: 'short' })}</small></li>`).join('')}</ul></section>` : ''; })()}`;
   },
 
@@ -610,7 +631,7 @@ const VIEW_RENDER = {
   },
 
   async more() {
-    return `<div class="page-head"><h1>More</h1><div class="actions"><button class="btn ghost" data-theme-flip>${document.documentElement.dataset.theme === 'dark' ? 'Light mode' : 'Dark mode'}</button></div></div><div class="more-grid">${views().filter(([id]) => !mobileTabs().includes(id)).map(([id, label]) => `<a href="#${id}" class="card more-tile">${icon(id)}<span>${label}</span></a>`).join('')}</div><p class="muted made-m">Made for Imran by Claude</p>`;
+    return `<div class="page-head"><h1>More</h1><div class="actions"><button class="btn ghost" data-theme-flip>${document.documentElement.dataset.theme === 'dark' ? 'Light mode' : 'Dark mode'}</button></div></div><div class="more-grid">${views().filter(([id]) => !mobileTabs().includes(id)).map(([id, label]) => `<a href="#${id}" class="card more-tile">${icon(id)}<span>${label}</span></a>`).join('')}</div><p class="muted made-m">Made for Imran by Claude<br><a class="gh-link" href="https://github.com/01IM/command-centre" target="_blank" rel="noopener">github.com/01IM/command-centre</a></p>`;
   },
 
   async settings() {
@@ -650,6 +671,7 @@ const VIEW_RENDER = {
         <div class="row">${badge(ms)}<span class="spacer"></span><button class="btn ghost sm" type="submit">Save</button>${ms !== 'disconnected' ? '<button type="button" class="btn ghost sm" data-disconnect="microsoft">Disconnect</button>' : ''}<button type="button" class="btn primary sm" data-connect="microsoft">${ms === 'connected' ? 'Reconnect' : 'Connect'}</button></div></form>`)}
       ${card('Appearance', `<form data-form="appearance" class="stack">
         <label><span>Theme</span><select name="theme">${[['system', 'Match Windows'], ['dark', 'Dark'], ['light', 'Light']].map(([v, l]) => `<option value="${v}" ${themePref() === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <div class="row"><span>Home layout</span><span class="spacer"></span><button type="button" class="btn ghost sm" data-layout-edit>Edit layout</button><button type="button" class="btn ghost sm" data-layout-reset>Reset</button></div>
         <div class="row"><button type="button" class="btn ghost sm" data-avatar-change>Change profile picture</button><button type="button" class="btn ghost sm" data-avatar-remove>Remove picture</button><span class="spacer"></span><button class="btn primary sm">Save</button></div></form>`)}
       ${card('Location', `<form data-form="location" class="stack"><label><span>Name</span><input name="name" value="${esc(l.name)}"></label><div class="row2"><label><span>Latitude</span><input name="lat" type="number" step="0.0001" value="${l.lat}"></label><label><span>Longitude</span><input name="lon" type="number" step="0.0001" value="${l.lon}"></label></div><div class="row"><button type="button" class="btn ghost sm" data-reset-loc>Kuwait City</button><span class="spacer"></span><button class="btn primary sm">Save</button></div></form><small class="muted">Used for prayer times (Kuwait method) and weather. Units: °C, km/h.</small>`)}
       ${!isApp() ? '' : card('Notifications', `<form data-form="notify" class="stack">
@@ -1057,8 +1079,9 @@ function taskForm(t) {
       { name: 'title', label: 'Task', required: true, value: t.title, wide: true },
       { name: 'due', label: 'Due date', type: 'date', value: t.due || '' },
       { name: 'important', label: 'Priority', type: 'select', options: [['', 'Normal'], ['1', 'Important']], value: t.importance === 'high' ? '1' : '' },
+      { name: 'repeat', label: 'Repeats', type: 'select', options: [['', 'Does not repeat'], ['mon_thu', 'Mon, Tue, Wed & Thu'], ['sun_thu', 'Sun–Thu (work week)'], ['daily', 'Every day']], value: Object.keys(REPEATS).find((k) => REPEATS[k].join() === (t.repeat || []).join()) || '' },
     ],
-    onSubmit: (v) => upsert('localTasks', { ...t, title: v.title, due: v.due || null, importance: v.important ? 'high' : 'normal' }),
+    onSubmit: (v) => upsert('localTasks', { ...t, title: v.title, due: v.repeat ? null : v.due || null, importance: v.important ? 'high' : 'normal', repeat: v.repeat ? REPEATS[v.repeat] : null, doneOn: v.repeat ? t.doneOn || null : null, done: v.repeat ? false : t.done }),
     onDelete: () => remove('localTasks', t.id) });
 }
 
@@ -1121,6 +1144,8 @@ function bindView(root) {
       if (ds.add === 'budget') return budgetForm({}, { kind: ds.kind || budgetView.tab, cat: ds.cat });
       if (ds.saveToward) { e.stopPropagation(); return saveTowardForm(list('budget').find((x) => x.id === ds.saveToward)); }
       if (ds.avatarChange !== undefined) return pickAvatar();
+      if (ds.layoutEdit !== undefined) { layoutEditPending = true; if (current === 'home') return mountHomeLayout(); location.hash = '#home'; return; }
+      if (ds.layoutReset !== undefined) { await setSetting('homeLayout_' + deviceType(), { order: [], size: {} }); Sync.soon?.(2000); return toast('Home layout reset', 'ok'); }
       if (ds.syncNow !== undefined) { await Sync.syncNow(); return Sync.status.error ? toast(Sync.status.error, 'error') : toast('Synced', 'ok'); }
       if (ds.syncOff !== undefined) { if (!t.dataset.armed) { t.dataset.armed = 1; t.textContent = 'Tap again to sign out'; return; } await Sync.disconnect(); toast('Sync turned off on this device (your data stays here)', 'ok'); return doRender(false, true); }
       if (ds.themeFlip !== undefined) { await setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'); return doRender(false, true); }
@@ -1163,7 +1188,11 @@ function bindView(root) {
       }
       if (ds.done !== undefined && t.classList.contains('check')) {
         t.classList.add('on');
-        if (ds.local) { const lt = list('localTasks').find((x) => x.id === ds.done); return upsert('localTasks', { ...lt, done: true }); }
+        if (ds.local) {
+          const lt = list('localTasks').find((x) => x.id === ds.done);
+          if (lt.repeat?.length) { const today = ymd(new Date()); return upsert('localTasks', { ...lt, doneOn: lt.doneOn === today ? null : today }); } // ticks off for today only
+          return upsert('localTasks', { ...lt, done: true });
+        }
         await I.completeTodo(ds.list, ds.done);
         cache.todo.tasks = cache.todo.tasks.filter((x) => x.id !== ds.done); await kvSet('cache:todo', cache.todo);
         return render();
@@ -1216,7 +1245,8 @@ function bindView(root) {
     try {
       if (kind === 'todo') {
         if (!v.title.trim()) return;
-        await upsert('localTasks', { title: v.title.trim(), due: v.due || null, done: false });
+        await upsert('localTasks', { title: v.title.trim(), due: v.repeat ? null : v.due || null, done: false, ...(v.repeat ? { repeat: REPEATS[v.repeat], doneOn: null } : {}) });
+        if (v.repeat) toast('Added · repeats Mon–Thu', 'ok');
       } else if (kind === 'quicknote') {
         if (!v.text.trim()) return; await upsert('notes', { text: v.text.trim() }); toast('Note saved', 'ok');
       } else if (kind === 'checkpoint') {
@@ -1293,13 +1323,16 @@ function relayEvents(r, from, to) {
 
 // ---------- syncing ----------
 const LAST = {};
+const BUSY = {};
 async function refresh(what, manual = false) {
+  if (BUSY[what] && !manual && Date.now() - BUSY[what] < 120000) return; // already running
+  BUSY[what] = Date.now();
   try {
     if (what === 'calendar') {
       if (!I.calendars().length) return;
       const before = JSON.stringify(cache.calendar?.events || []);
       if (isApp()) {
-        try { await I.syncCalendar(); cache.calendarError = null; } catch (e) { cache.calendarError = navigator.onLine ? errText(e) : null; throw e; }
+        try { await I.syncCalendar(null, { force: manual }); cache.calendarError = null; } catch (e) { cache.calendarError = navigator.onLine ? errText(e) : null; throw e; }
         // relay a copy (about a month back and two ahead) for the iPhone / iPad
         const texts = await kvGet('cache:ics', []);
         const relay = I.eventsBetween(texts, new Date(Date.now() - 40 * 86400000), new Date(Date.now() + 80 * 86400000), { includeHidden: true });
@@ -1334,18 +1367,21 @@ async function refresh(what, manual = false) {
     if (e.code === 'AUTH') { if (manual) toast('Please reconnect your account', 'error'); }
     else if (manual) toast(errText(e), 'error');
     else console.warn(what, e);
-  }
+  } finally { BUSY[what] = 0; }
   render();
 }
 
-const EVERY = { calendar: 1, todo: 5, weather: 30, prayer: 60, health: 60 }; // minutes
+const EVERY = { calendar: 1, todo: 5, weather: 30, prayer: 60, health: 15 }; // minutes
 const HIDDEN_EVERY = { calendar: 5 }; // slower while the window is hidden in the tray
+let tickDay = ymd(new Date());
 async function tick() {
+  if (ymd(new Date()) !== tickDay) { tickDay = ymd(new Date()); render(); } // new day: recurring to-dos come back
   if (window.__cubeRunning) return; // background updates wait until the solve is done
-  for (const [what, mins] of Object.entries(EVERY)) {
+  // Each source refreshes on its own, so a slow calendar can never hold up Fitbit or the to-do list.
+  await Promise.allSettled(Object.entries(EVERY).map(([what, mins]) => {
     const m = document.hidden && HIDDEN_EVERY[what] ? HIDDEN_EVERY[what] : mins;
-    if (!LAST[what] || Date.now() - LAST[what] > m * 60000 - 2000) await refresh(what);
-  }
+    return !LAST[what] || Date.now() - LAST[what] > m * 60000 - 2000 ? refresh(what) : null;
+  }));
   checkNotifications();
 }
 
@@ -1425,12 +1461,28 @@ async function setTheme(pref) {
 }
 mql.addEventListener?.('change', () => { if (themePref() === 'system') applyTheme(); });
 
+let avatarUrl = null;
 async function loadAvatar() {
-  const btn = $('#avatar'); if (!btn) return;
-  const photo = await kvGet('profilePhoto');
-  btn.style.backgroundImage = photo ? `url("${photo}")` : '';
-  btn.classList.toggle('has-photo', !!photo);
+  avatarUrl = await kvGet('profilePhoto');
+  for (const btn of document.querySelectorAll('#avatar, .hero-avatar')) {
+    btn.style.backgroundImage = avatarUrl ? `url("${avatarUrl}")` : '';
+    btn.classList.toggle('has-photo', !!avatarUrl);
+  }
 }
+
+// ---------- Home layout (move / resize widgets) ----------
+let layoutEditPending = false;
+const HOME_DEFAULT_W = { meetings: 2, prayer: 1, todo: 1, weather: 1, plans: 1, docs: 1, budget: 1, health: 1, goals: 1, overwatch: 1, note: 1 };
+function mountHomeLayout() {
+  const grid = $('#main .home-grid'); if (!grid) return;
+  const key = 'homeLayout_' + deviceType();
+  mountHome(grid, {
+    device: deviceType(), layout: state.settings[key], defaults: HOME_DEFAULT_W, editing: layoutEditPending || window.__layoutEditing,
+    save: (l) => { setSetting(key, l).then(() => Sync.soon?.(2000)).catch((e) => console.warn(e)); },
+  });
+  layoutEditPending = false;
+}
+addEventListener('layout-done', () => { toast('Layout saved', 'ok'); render(); });
 async function pickAvatar() {
   const f = await pickFile('image/*'); if (!f) return;
   try {
@@ -1446,6 +1498,7 @@ async function pickAvatar() {
 // ---------- startup ----------
 async function start() {
   await S.loadState();
+  for (const s of list('seasons')) if (/battle pass/i.test(s.note || '')) await upsert('seasons', { ...s, note: '' });
   if (!state.settings.owSeasonsSeeded) {
     for (const [i, s] of DEFAULT_SEASONS.entries()) if (!list('seasons').some((x) => x.name === s.name)) await upsert('seasons', { id: 'ow-default-' + i, ...s });
     await setSetting('owSeasonsSeeded', true);
@@ -1474,7 +1527,10 @@ async function start() {
   tick();
   setInterval(tick, 60_000);
   setInterval(liveUpdate, 1000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { LAST.calendar = 0; tick(); } });
+  // Coming back to the window (or the laptop waking up): anything older than 5 minutes refreshes straight away.
+  const catchUp = () => { for (const k of ['health', 'todo']) if (Date.now() - (LAST[k] || 0) > 5 * 60000) LAST[k] = 0; };
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { LAST.calendar = 0; catchUp(); tick(); } });
+  addEventListener('focus', () => { catchUp(); tick(); });
   addEventListener('focus', () => { if (Date.now() - (LAST.calendar || 0) > 20000) refresh('calendar'); });
   addEventListener('online', () => { for (const k of Object.keys(LAST)) LAST[k] = 0; tick(); });
 }
@@ -1484,3 +1540,8 @@ async function start() {
 if (!isApp() && 'serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 
 start();
+
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a.gh-link');
+  if (a && isApp() && !a.closest('#main')) { e.preventDefault(); openExternal(a.href); }
+});

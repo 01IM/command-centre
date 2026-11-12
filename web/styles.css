@@ -786,3 +786,61 @@ body[data-device=phone] #cube { display: none; }
 .settings-cols { columns: 3 340px; column-gap: 18px; }
 .settings-cols > .card { break-inside: avoid; display: inline-block; width: 100%; margin: 0 0 18px !important; }
 @media (max-width: 640px) { .settings-cols { columns: 1; } }
+
+.gh-link { font-size: 10px; color: var(--text-3); text-decoration: none; opacity: .7; margin-top: -8px; transition: opacity .2s, color .2s; }
+.gh-link:hover { opacity: 1; color: var(--accent); text-decoration: underline; }
+.made-m .gh-link { display: inline-block; margin-top: 4px; }
+@media (max-width: 1100px) and (min-width: 641px) { .sidebar-foot .gh-link { display: none; } }
+
+/* =================== Home layout: masonry grid + edit mode =================== */
+.home-grid.masonry { grid-auto-rows: 8px; row-gap: 0; column-gap: 16px; align-items: start; grid-auto-flow: row dense; position: relative; }
+.home-grid.masonry > .card { margin: 0; position: relative; }
+.home-grid > .card.fixed-h { overflow: auto; scrollbar-width: thin; }
+.hero-avatar { display: none; }
+
+.home-grid.editing > .card { cursor: grab; user-select: none; -webkit-user-select: none; outline: 1.5px dashed color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: -1.5px; animation: w-breathe 2.4s ease-in-out infinite; }
+.home-grid.editing > .card > *:not(.w-tool) { pointer-events: none; }
+.home-grid.editing > .card:hover { box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow); }
+.home-grid.editing > .card.dragging { cursor: grabbing; z-index: 30; animation: none; outline-style: solid; box-shadow: 0 24px 60px rgba(0,0,0,.45), 0 0 0 1.5px var(--accent); opacity: .97; transition: box-shadow .2s, opacity .2s; }
+.home-grid.editing > .card.dropping { z-index: 30; transition: transform .3s cubic-bezier(.2,.8,.2,1), box-shadow .3s; }
+.home-grid.editing > .card.resizing { z-index: 20; animation: none; outline-style: solid; transition: height .08s linear; }
+.home-grid.is-dragging > .card:not(.dragging) { transition: transform .32s cubic-bezier(.2,.8,.2,1); }
+@keyframes w-breathe { 50% { outline-color: color-mix(in srgb, var(--accent) 25%, transparent); } }
+.w-tool { position: absolute; z-index: 2; }
+.w-grip { top: 10px; right: 10px; width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; background: var(--surface-2, rgba(127,127,127,.12)); border: 1px solid var(--line); color: var(--text-2); cursor: grab; touch-action: none; transition: background .2s, color .2s; }
+.w-grip svg { width: 16px; height: 16px; fill: currentColor; }
+.w-grip:hover { color: var(--accent); }
+.w-resize { right: 3px; bottom: 3px; width: 22px; height: 22px; cursor: nwse-resize; touch-action: none; border-radius: 0 0 var(--radius) 0; }
+.w-resize::after { content: ''; position: absolute; right: 5px; bottom: 5px; width: 10px; height: 10px; border-right: 2px solid var(--accent); border-bottom: 2px solid var(--accent); border-radius: 0 0 3px 0; opacity: .8; transition: transform .15s; }
+.w-resize:hover::after { transform: scale(1.25); opacity: 1; }
+.layout-bar { position: fixed; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom)); z-index: 60; display: flex; align-items: center; gap: 10px; padding: 9px 10px 9px 18px; border-radius: 14px; background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid var(--line); box-shadow: 0 18px 50px rgba(0,0,0,.35); font-size: 13px; color: var(--text-2); transform: translate(-50%, 30px); opacity: 0; transition: transform .28s cubic-bezier(.2,.8,.2,1), opacity .28s; }
+.layout-bar.in { transform: translate(-50%, 0); opacity: 1; }
+@media (max-width: 640px) {
+  .hero { position: relative; }
+  .hero-avatar { display: grid; position: absolute; top: 2px; right: 0; width: 46px; height: 46px; }
+  .hero > div:first-of-type { padding-right: 56px; }
+  .layout-bar { bottom: calc(78px + env(safe-area-inset-bottom)); width: calc(100vw - 24px); padding-left: 14px; font-size: 12px; }
+  .layout-bar span { flex: 1; }
+}
+@media (prefers-reduced-motion: reduce) { .home-grid.editing > .card { animation: none; } }
+
+/* Recurring to-dos */
+.quick-add[data-form=todo] { flex-wrap: wrap; }
+.repeat-opt { flex-basis: 100%; display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3); cursor: pointer; user-select: none; margin-top: -2px; width: fit-content; }
+.repeat-opt input { appearance: none; -webkit-appearance: none; width: 15px; height: 15px; margin: 0; border-radius: 4px; border: 1.5px solid var(--text-3); display: grid; place-items: center; cursor: pointer; transition: all .18s var(--ease); flex: none; }
+.repeat-opt input:checked { background: var(--accent); border-color: var(--accent); }
+.repeat-opt input:checked::after { content: ''; width: 4px; height: 8px; border: solid var(--bg, #111); border-width: 0 2px 2px 0; transform: translateY(-1px) rotate(45deg); }
+.repeat-opt:has(input:checked) { color: var(--accent); }
+.repeat-opt:hover { color: var(--text-2); }
+.tasks small.repeat-tag { color: var(--accent); opacity: .85; white-space: nowrap; }
+.tasks li.done-today .t { text-decoration: line-through; text-decoration-color: var(--text-3); color: var(--text-3); }
+.tasks li.done-today, .tasks li.off-day { opacity: .6; }
+.tasks li.off-day .check { cursor: default; border-style: dashed; }
+.tasks li.off-day .check:hover { border-color: var(--text-3); }
+.quick-add .repeat-opt input[type=checkbox] { flex: none; width: 15px; height: 15px; min-height: 0; padding: 0; background: none; box-shadow: none; }
+.quick-add .repeat-opt input[type=checkbox]:checked { background: var(--accent); }
+/* Only reveal the repeat option while a task is being typed */
+.quick-add .repeat-opt { max-height: 0; opacity: 0; margin-top: -8px; overflow: hidden; pointer-events: none; transition: max-height .25s var(--ease), opacity .2s var(--ease), margin-top .25s var(--ease); }
+.quick-add:focus-within .repeat-opt,
+.quick-add:has(input[name=title]:not(:placeholder-shown)) .repeat-opt,
+.quick-add:has(.repeat-opt input:checked) .repeat-opt { max-height: 24px; opacity: 1; margin-top: 0; pointer-events: auto; }

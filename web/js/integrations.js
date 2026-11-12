@@ -43,7 +43,7 @@ export function calendars() {
     .map((url, i) => ({ id: 'c' + i, name: i === 0 ? 'Personal' : 'Calendar ' + (i + 1), url, color: CAL_COLORS[i % CAL_COLORS.length] }));
 }
 
-export async function syncCalendar(fetchVia = null) {
+export async function syncCalendar(fetchVia = null, { force = false } = {}) {
   const cals = calendars();
   if (!cals.length) { await kvSet('cache:ics', []); await kvSet('cache:calendar', { at: Date.now(), events: [] }); return []; }
   const texts = [], errors = [];
@@ -53,6 +53,11 @@ export async function syncCalendar(fetchVia = null) {
       if (cal.type === 'caldav') {
         const password = await kvGet('calsecret:' + cal.id);
         if (!password) throw new Error('needs its password — open Settings → Calendars and edit it');
+        // Work-email (CalDAV) calendars are only fetched every 6 hours; the ↻ button fetches straight away.
+        const sig = [cal.url, cal.user, cal.principal, password.length].join('|');
+        const last = await kvGet('caldav:fetched:' + cal.id);
+        const kept = (await kvGet('cache:ics', [])).find((t) => t && t.id === cal.id);
+        if (!force && kept && last?.sig === sig && Date.now() - last.at < 6 * 3600000) { texts.push({ ...kept, name: cal.name, color: cal.color }); continue; }
         const acct = { server: cal.url, user: cal.user, password, principal: cal.principal };
         let cols = await kvGet('caldav:cols:' + cal.id);
         const colsAt = (await kvGet('caldav:colsAt:' + cal.id)) || 0;
@@ -62,6 +67,7 @@ export async function syncCalendar(fetchVia = null) {
         try { text = await CalDAV.fetchEvents(acct, cols, from, to); }
         catch (e) { cols = await CalDAV.discover(acct); await kvSet('caldav:cols:' + cal.id, cols); text = await CalDAV.fetchEvents(acct, cols, from, to); }
         texts.push({ id: cal.id, name: cal.name, color: cal.color, text });
+        await kvSet('caldav:fetched:' + cal.id, { at: Date.now(), sig });
         await kvSet('cal:status:' + cal.id, { ok: true, at: Date.now(), count: (text.match(/BEGIN:VEVENT/g) || []).length, calendars: cols.map((c) => c.name) });
         continue;
       }
@@ -117,8 +123,15 @@ const asDate = (v) => (typeof v === 'string' ? new Date(v) : v?.physicalTime ? n
 async function listPoints(type, filter, pageSize) {
   const params = new URLSearchParams({ filter });
   if (pageSize) params.set('pageSize', pageSize);
-  const res = await json(await gFetch(`${HEALTH}/${type}/dataPoints?${params}`));
-  return res.dataPoints || [];
+  // Follow every page, so the newest samples are never cut off by a page limit.
+  const all = [];
+  for (let page = 0; page < 12; page++) {
+    const res = await json(await gFetch(`${HEALTH}/${type}/dataPoints?${params}`));
+    all.push(...(res.dataPoints || []));
+    if (!res.nextPageToken) break;
+    params.set('pageToken', res.nextPageToken);
+  }
+  return all;
 }
 
 export async function syncHealth() {
