@@ -92,6 +92,6 @@ export async function getWeather({ force = false } = {}) {
 // in-game battle pass timer; a new story arc starts with Season 1 in 2027 (date not announced).
 export const DEFAULT_SEASONS = [
   { name: 'Season 5', kind: 'season', date: '2026-10-13T18:00:00Z', note: 'Estimated (9 weeks after Season 4)' },
-  { name: 'Season 6', kind: 'season', date: '2026-12-08T19:00:00Z', note: 'Per in-game battle pass timer' },
+  { name: 'Season 6', kind: 'season', date: '2026-12-08T19:00:00Z' },
   { name: 'Season 1 (2027)', kind: 'season', date: '2027-02-09T19:00:00Z', note: 'Estimate — not announced yet' },
 ];

@@ -1,9 +1,9 @@
 // Offline support for the iPhone / iPad (home-screen) version. Not used by the Windows app.
 // App files: network first (so updates arrive), cached copy when offline. API calls are never cached here.
-const VERSION = 'cc-v13';
+const VERSION = 'cc-v14';
 const SHELL = ['./', 'index.html', 'styles.css', 'manifest.webmanifest',
   'js/app.js', 'js/store.js', 'js/services.js', 'js/oauth.js', 'js/integrations.js', 'js/cube.js', 'js/ical.js',
-  'js/net.js', 'js/visuals.js', 'js/vault.js', 'js/sync.js', 'js/crypto.js', 'js/caldav.js',
+  'js/net.js', 'js/visuals.js', 'js/vault.js', 'js/sync.js', 'js/crypto.js', 'js/caldav.js', 'js/layout.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
