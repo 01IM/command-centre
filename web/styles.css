@@ -844,3 +844,29 @@ body[data-device=phone] #cube { display: none; }
 .quick-add:focus-within .repeat-opt,
 .quick-add:has(input[name=title]:not(:placeholder-shown)) .repeat-opt,
 .quick-add:has(.repeat-opt input:checked) .repeat-opt { max-height: 24px; opacity: 1; margin-top: 0; pointer-events: auto; }
+
+/* Holidays in the calendar */
+.chip-ev.holiday { background: color-mix(in srgb, var(--cal) 18%, transparent); border-left: 2px solid var(--cal); color: var(--text); }
+.chip-ev.holiday i { color: var(--cal); font-style: normal; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; font-size: 9px; }
+.pill.holiday { background: color-mix(in srgb, #3fae7a 20%, transparent); color: #3fae7a; }
+.card.holidays { margin-top: 18px; }
+.hol-note { font-size: 12.5px; margin: 0 0 12px; max-width: 900px; line-height: 1.5; }
+.hol-year { border-top: 1px solid var(--line-soft); }
+.hol-year summary { cursor: pointer; padding: 12px 2px; font-family: var(--serif, inherit); font-size: 18px; display: flex; align-items: baseline; gap: 12px; list-style: none; user-select: none; }
+.hol-year summary::-webkit-details-marker { display: none; }
+.hol-year summary::before { content: '›'; color: var(--text-3); transition: transform .2s var(--ease); display: inline-block; }
+.hol-year[open] summary::before { transform: rotate(90deg); }
+.hol-year summary small { font-family: var(--sans, inherit); font-size: 12px; color: var(--text-3); }
+.hol-list { list-style: none; margin: 0 0 12px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); column-gap: 28px; }
+.hol-list li { display: flex; align-items: center; gap: 10px; padding: 7px 2px; border-top: 1px solid var(--line-soft); font-size: 13.5px; min-width: 0; }
+.hol-list li .d { flex: 0 0 96px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.hol-list li b { font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hol-list li.obs b { color: var(--text-2); }
+.pill.obs { background: rgba(127,127,127,.14); color: var(--text-3); }
+.hol-list .shifted { color: var(--accent); white-space: nowrap; }
+.hol-adj { display: inline-flex; gap: 2px; opacity: .45; transition: opacity .2s; }
+.hol-list li:hover .hol-adj { opacity: 1; }
+@media (max-width: 640px) { .hol-list { grid-template-columns: 1fr; } .hol-list li .d { flex-basis: 84px; } .hol-adj { opacity: 1; } .hol-list li { flex-wrap: wrap; } }
+.hol-list { grid-template-columns: repeat(auto-fill, minmax(430px, 1fr)); }
+.hol-list li b { min-width: 110px; }
+.hol-adj { opacity: .7; }

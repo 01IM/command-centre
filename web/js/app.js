@@ -5,6 +5,7 @@ import { disconnect } from './oauth.js';
 import { isApp, openExternal, joinMeeting } from './net.js';
 import { wxIcon, moonInfo, moonSVG, clockFace, zoneTime } from './visuals.js';
 import { mountCube } from './cube.js';
+import { holidaysBetween, setHijriShifts, HOLIDAY_COLOR } from './holidays.js';
 import { mountHome, homeLayout, orderWidgets } from './layout.js';
 import * as V from './vault.js';
 import * as Sync from './sync.js';
@@ -478,6 +479,9 @@ const VIEW_RENDER = {
     const cdIds = I.calendars().filter((c) => c.type === 'caldav').map((c) => c.id);
     const evs = !texts.length ? relayEvents(await kvGet('relay:calendar'), gridStart, gridEnd)
       : [...I.eventsBetween(texts, gridStart, gridEnd), ...(!isApp() && cdIds.length ? relayEvents(await kvGet('relay:calendar'), gridStart, gridEnd).filter((e) => cdIds.includes(e.calId)) : [])];
+    setHijriShifts(state.settings.hijriShifts);
+    const showHolidays = !(state.settings.hiddenCalendars || []).includes('holidays');
+    if (showHolidays) evs.push(...holidaysBetween(gridStart, gridEnd));
     const plans = list('plans');
     const byDay = new Map();
     const add = (key, item) => { if (!byDay.has(key)) byDay.set(key, []); byDay.get(key).push(item); };
@@ -489,7 +493,7 @@ const VIEW_RENDER = {
       const s0 = D(p.date), e0 = D(p.end || p.date);
       for (let d = new Date(s0); d <= e0 && d < gridEnd; d.setDate(d.getDate() + 1)) add(ymd(d), { kind: 'plan', p });
     }
-    const order = (x) => (x.kind === 'plan' ? (x.p.time ? '1' + x.p.time : '0') : x.e.allDay ? '0' : '1' + fmt24(x.e.start));
+    const order = (x) => (x.kind === 'plan' ? (x.p.time ? '1' + x.p.time : '0') : x.e.holiday ? ' ' : x.e.allDay ? '0' : '1' + fmt24(x.e.start));
     for (const arr of byDay.values()) arr.sort((a, b) => order(a).localeCompare(order(b)));
     const todayKey = ymd(new Date());
     const sel = view.sel || todayKey;
@@ -498,24 +502,26 @@ const VIEW_RENDER = {
       const d = new Date(gridStart); d.setDate(gridStart.getDate() + i);
       const key = ymd(d); const items = byDay.get(key) || [];
       const chips = items.slice(0, 3).map((x) => x.kind === 'meeting'
-        ? `<span class="chip-ev ${x.e.allDay ? 'allday' : ''}" style="--cal:${esc(x.e.color || 'var(--accent)')}" title="${esc(x.e.title)}${x.e.calendar ? ' · ' + esc(x.e.calendar) : ''}">${x.e.allDay ? '' : `<i>${fmtTime(x.e.start)}${x.e.platform ? ' · ' + x.e.platform : ''}</i>`}<span class="t">${esc(x.e.title)}</span></span>`
+        ? `<span class="chip-ev ${x.e.allDay ? 'allday' : ''}${x.e.holiday ? ' holiday' : ''}" style="--cal:${esc(x.e.color || 'var(--accent)')}" title="${esc(x.e.title)}${x.e.calendar ? ' · ' + esc(x.e.calendar) : ''}">${x.e.holiday ? '<i>Holiday</i>' : x.e.allDay ? '' : `<i>${fmtTime(x.e.start)}${x.e.platform ? ' · ' + x.e.platform : ''}</i>`}<span class="t">${esc(x.e.title)}</span></span>`
         : `<span class="chip-ev plan ${esc(x.p.type || 'other')}" title="${esc(x.p.title)}">${x.p.time ? `<i>${fmtTime(new Date(x.p.date + 'T' + x.p.time))}</i>` : ''}<span class="t">${esc(x.p.title)}</span></span>`).join('');
       cells.push(`<button class="cal-cell ${d.getMonth() !== view.m ? 'out' : ''} ${key === todayKey ? 'today' : ''} ${key === sel ? 'sel' : ''} ${d.getDay() === 5 || d.getDay() === 6 ? 'wknd' : ''}" data-day="${key}">
         <span class="dnum">${d.getDate()}</span><div class="cal-chips">${chips}${items.length > 3 ? `<span class="more-ev">+${items.length - 3} more</span>` : ''}</div></button>`);
     }
     const selItems = byDay.get(sel) || [];
     const agenda = selItems.length ? `<ul class="events">${selItems.map((x) => x.kind === 'meeting'
-      ? `<li><div class="when">${x.e.allDay ? 'All day' : fmtTime(x.e.start)}</div><div class="what"><b>${esc(x.e.title)}</b><small>${x.e.platform ? `<span class="pill ${x.e.platform.toLowerCase()}">${x.e.platform}</span>` : ''}${x.e.allDay ? '' : 'until ' + fmtTime(x.e.end)}${x.e.location && !x.e.join ? ' · ' + esc(x.e.location) : ''}</small></div>${x.e.join ? `<button class="btn ghost sm" data-join="${esc(x.e.join)}">Join</button>` : ''}</li>`
+      ? `<li><div class="when">${x.e.allDay ? 'All day' : fmtTime(x.e.start)}</div><div class="what"><b>${esc(x.e.title)}</b><small>${x.e.holiday ? `<span class="pill holiday">Holiday</span>${esc(x.e.note)}` : ''}${x.e.platform ? `<span class="pill ${x.e.platform.toLowerCase()}">${x.e.platform}</span>` : ''}${x.e.allDay ? '' : 'until ' + fmtTime(x.e.end)}${x.e.location && !x.e.join ? ' · ' + esc(x.e.location) : ''}</small></div>${x.e.join ? `<button class="btn ghost sm" data-join="${esc(x.e.join)}">Join</button>` : ''}</li>`
       : `<li class="plan" data-edit-plan="${x.p.id}"><div class="when">${x.p.time ? fmtTime(new Date(x.p.date + 'T' + x.p.time)) : PLAN_ICONS[x.p.type || 'other']}</div><div class="what"><b>${esc(x.p.title)}</b><small><span class="pill plan">${esc(x.p.type || 'other')}</span>${x.p.where ? esc(x.p.where) : ''}${x.p.end && x.p.end !== x.p.date ? ' · until ' + fmtDay(x.p.end) : ''}</small></div></li>`).join('')}</ul>` : empty('Nothing on this day.');
     const monthName = first.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
     return `<div class="page-head"><h1>${monthName}</h1><div class="actions">
         <div class="seg"><button class="btn ghost" data-cal="-1" aria-label="Previous month">‹</button><button class="btn ghost" data-cal="0">Today</button><button class="btn ghost" data-cal="1" aria-label="Next month">›</button></div>
         <button class="btn ghost" data-refresh="calendar" title="Refresh">↻</button><button class="btn primary" data-add="plan" data-date="${sel}">+ Add plan</button></div></div>
-      ${!I.calendars().length ? `<section class="card banner"><div class="connect"><p>Add your calendars in Settings (e.g. Personal and Plot.it) to see all your meetings here.</p><a class="btn primary sm" href="#settings">Settings</a></div></section>` : `<div class="cal-legend">${I.calendars().map((c) => `<button class="legend ${(state.settings.hiddenCalendars || []).includes(c.id) ? 'off' : ''}" data-cal-toggle="${esc(c.id)}" title="Show / hide"><i style="background:${esc(c.color)}"></i>${esc(c.name)}</button>`).join('')}<span class="legend plans"><i></i>Your plans</span></div>`}
+      ${!I.calendars().length ? `<section class="card banner"><div class="connect"><p>Add your calendars in Settings (e.g. Personal and Plot.it) to see all your meetings here.</p><a class="btn primary sm" href="#settings">Settings</a></div></section>` : ''}
+      <div class="cal-legend">${I.calendars().map((c) => `<button class="legend ${(state.settings.hiddenCalendars || []).includes(c.id) ? 'off' : ''}" data-cal-toggle="${esc(c.id)}" title="Show / hide"><i style="background:${esc(c.color)}"></i>${esc(c.name)}</button>`).join('')}<button class="legend ${showHolidays ? '' : 'off'}" data-cal-toggle="holidays" title="Show / hide"><i style="background:${HOLIDAY_COLOR}"></i>Holidays</button><span class="legend plans"><i></i>Your plans</span></div>
       <div class="cal-layout">
         <section class="card cal"><div class="cal-head">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => `<span>${d}</span>`).join('')}</div><div class="cal-grid">${cells.join('')}</div></section>
         <section class="card agenda"><header><h2>${sel === todayKey ? 'Today' : fmtDay(sel)}</h2><small>${relDays(daysUntil(sel))}</small></header>${agenda}</section>
-      </div>`;
+      </div>
+      ${showHolidays ? holidayList() : ''}`;
   },
 
   async budget() { return budgetPage(); },
@@ -633,7 +639,7 @@ const VIEW_RENDER = {
   },
 
   async more() {
-    return `<div class="page-head"><h1>More</h1><div class="actions"><button class="btn ghost" data-theme-flip>${document.documentElement.dataset.theme === 'dark' ? 'Light mode' : 'Dark mode'}</button></div></div><div class="more-grid">${views().filter(([id]) => !mobileTabs().includes(id)).map(([id, label]) => `<a href="#${id}" class="card more-tile">${icon(id)}<span>${label}</span></a>`).join('')}</div><p class="muted made-m">Made for Imran by Claude<br><a class="gh-link" href="https://github.com/01IM/command-centre" target="_blank" rel="noopener">github.com/01IM/command-centre</a></p>`;
+    return `<div class="page-head"><h1>More</h1><div class="actions"><button class="btn ghost" data-theme-flip>${document.documentElement.dataset.theme === 'dark' ? 'Light mode' : 'Dark mode'}</button></div></div><div class="more-grid">${views().filter(([id]) => !mobileTabs().includes(id)).map(([id, label]) => `<a href="#${id}" class="card more-tile">${icon(id)}<span>${label}</span></a>`).join('')}</div><p class="muted made-m">Made for Imran by Claude<br><a class="gh-link" href="https://github.com/01IM/command-centre" target="_blank" rel="noopener">GitHub</a></p>`;
   },
 
   async settings() {
@@ -1146,6 +1152,12 @@ function bindView(root) {
       if (ds.add === 'budget') return budgetForm({}, { kind: ds.kind || budgetView.tab, cat: ds.cat });
       if (ds.saveToward) { e.stopPropagation(); return saveTowardForm(list('budget').find((x) => x.id === ds.saveToward)); }
       if (ds.avatarChange !== undefined) return pickAvatar();
+      if (ds.hshift) {
+        const [key, by] = ds.hshift.split(':'); const sh = { ...(state.settings.hijriShifts || {}) };
+        const v = Math.max(-2, Math.min(2, (sh[key] || 0) + +by)); if (v) sh[key] = v; else delete sh[key];
+        window.__holYear = +t.closest('[data-hol-year]')?.dataset.holYear || undefined;
+        await setSetting('hijriShifts', sh); Sync.soon?.(1500); return doRender(false, true);
+      }
       if (ds.layoutEdit !== undefined) { layoutEditPending = true; if (current === 'home') return mountHomeLayout(); location.hash = '#home'; return; }
       if (ds.layoutReset !== undefined) { await setSetting('homeLayout_' + deviceType(), { order: [], size: {} }); Sync.soon?.(2000); return toast('Home layout reset', 'ok'); }
       if (ds.syncNow !== undefined) { await Sync.syncNow(); return Sync.status.error ? toast(Sync.status.error, 'error') : toast('Synced', 'ok'); }
@@ -1475,6 +1487,21 @@ async function loadAvatar() {
 // ---------- Home layout (move / resize widgets) ----------
 let layoutEditPending = false;
 const HOME_DEFAULT_W = { meetings: 2, prayer: 1, todo: 1, weather: 1, plans: 1, docs: 1, budget: 1, health: 1, goals: 1, overwatch: 1, note: 1 };
+// Holidays for the next 5 years, grouped by year. Islamic dates can be nudged a day to match the announced moon sighting.
+function holidayList() {
+  const from = startOfDay(), to = new Date(from.getFullYear() + 5, 11, 31);
+  const all = holidaysBetween(from, to);
+  const years = [...new Set(all.map((h) => h.start.getFullYear()))];
+  const openYear = window.__holYear ?? years[0];
+  return `<section class="card holidays"><header><h2>Holidays · next 5 years</h2><small class="muted">Kuwait official + Islamic dates</small></header>
+    <p class="muted hol-note">Islamic dates follow the Umm al-Qura calendar, calculated ahead for every year. If Kuwait announces a date a day earlier or later after the moon sighting, press ‹ or › next to it — every date in that Islamic month moves with it, on all your devices.</p>
+    ${years.map((y) => `<details class="hol-year" data-hol-year="${y}" ${y === openYear ? 'open' : ''}><summary>${y}<small>${all.filter((h) => h.start.getFullYear() === y && h.official).length} days off</small></summary><ul class="hol-list">${all.filter((h) => h.start.getFullYear() === y).map((h) => `
+      <li class="${h.official ? '' : 'obs'}"><span class="d">${h.start.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</span><b>${esc(h.title)}</b>
+        <span class="pill ${h.official ? 'holiday' : 'obs'}">${h.official ? 'Holiday' : 'Islamic date'}</span>${h.shift ? `<small class="shifted">moved ${h.shift > 0 ? '+' : ''}${h.shift} day${Math.abs(h.shift) > 1 ? 's' : ''}</small>` : ''}
+        ${h.hkey ? `<span class="hol-adj"><button class="icon-btn sm" data-hshift="${h.hkey}:-1" title="One day earlier">‹</button><button class="icon-btn sm" data-hshift="${h.hkey}:1" title="One day later">›</button></span>` : ''}</li>`).join('')}</ul></details>`).join('')}
+  </section>`;
+}
+
 function homeCustom() { const l = state.settings['homeLayout_' + deviceType()]; return !!(l?.order?.length || Object.keys(l?.size || {}).length); }
 function mountHomeLayout() {
   const grid = $('#main .home-grid'); if (!grid) return;
