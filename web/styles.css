@@ -983,3 +983,14 @@ border-radius: 8px; background: color-mix(in srgb, var(--hue) 16%, transparent);
 .meet-exp svg { transition: transform .25s var(--ease); display: block; }
 .meet-exp.open { color: var(--accent); }
 .meet-exp.open svg { transform: rotate(180deg); }
+/* Settings: an even grid of same-sized cards */
+@media (min-width: 900px) {
+  .settings-grid { columns: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: 18px; }
+  .settings-grid > .card { display: flex; flex-direction: column; margin: 0 !important; width: auto; min-height: 250px; }
+  .settings-grid > .card > :not(header) { flex: 0 0 auto; }
+  .settings-grid > .card > form.stack, .settings-grid > .card > .cal-list, .settings-grid > .card > .seasons { flex: 1 1 auto; }
+  .settings-grid > .card > form.stack { display: flex; flex-direction: column; }
+  .settings-grid > .card > form.stack > .row:last-child, .settings-grid > .card > .row:last-of-type { margin-top: auto; }
+  .settings-grid > .card { overflow: auto; scrollbar-width: thin; }
+}
+@media (min-width: 900px) and (max-width: 1250px) { .settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
