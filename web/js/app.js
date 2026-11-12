@@ -361,8 +361,13 @@ function overwatchBlock() {
   const next = nextSeasonEvent();
   const cur = currentSeason();
   if (!next && !cur) return empty('Add season dates in Settings.');
-  return `<div class="ow">${cur ? `<small>Current: <b>${esc(cur.name)}</b></small>` : ''}
-    ${next ? `<div class="ow-next"><span>${esc(next.name)}${next.kind === 'mid' ? ' (mid-season)' : ''}</span><strong data-countdown="${next.t}">${countdown(next.t - Date.now())}</strong><small>${fmtDate(next.t, { weekday: 'short', day: 'numeric', month: 'short' })} · ${fmtTime(next.t)} your time${next.note ? ' · ' + esc(next.note) : ''}</small></div>` : ''}</div>`;
+  // mid-season updates read "Season 5 (Midseason)"
+  const now = Date.now();
+  const seasonAt = (t) => list('seasons').filter((s) => s.kind === 'season' && new Date(s.date).getTime() <= t).sort((a, b) => b.date.localeCompare(a.date))[0];
+  const label = (ev) => ev.kind !== 'mid' ? ev.name : `${(ev.name.match(/season\s*\d+(\s*\(\d{4}\))?/i) || [seasonAt(new Date(ev.date).getTime())?.name || ev.name.replace(/\s*[-–(]?\s*mid[- ]?season.*$/i, '')])[0]} (Midseason)`;
+  const lastMid = cur && list('seasons').filter((s) => s.kind === 'mid' && new Date(s.date).getTime() <= now && new Date(s.date).getTime() >= cur.t).sort((a, b) => b.date.localeCompare(a.date))[0];
+  return `<div class="ow">${cur ? `<small>Current: <b>${esc(lastMid ? label(lastMid) : cur.name)}</b></small>` : ''}
+    ${next ? `<div class="ow-next"><span>${esc(label(next))}</span><strong data-countdown="${next.t}">${countdown(next.t - Date.now())}</strong><small>${fmtDate(next.t, { weekday: 'short', day: 'numeric', month: 'short' })} · ${fmtTime(next.t)} your time${next.note ? ' · ' + esc(next.note) : ''}</small></div>` : ''}</div>`;
 }
 
 function sparkline(points, w = 300, h = 60) {
@@ -669,20 +674,17 @@ const VIEW_RENDER = {
            <div class="row"><button type="submit" class="btn ghost sm" name="mode" value="signin">Sign in</button><span class="spacer"></span><button type="submit" class="btn primary sm" name="mode" value="create">Create account (first device)</button></div>
          </form>`);
     return `<div class="page-head"><h1>Settings</h1></div>
-    <div class="settings-cols">
+    <div class="settings-cols settings-grid">
       ${syncCard}
       ${card('Calendars', `<p class="muted">Add each calendar you want to see — e.g. your Google calendar and your Plot.it work calendar. They're all merged into one view, each in its own colour.</p>
         <ul class="cal-list">${(await Promise.all(I.calendars().map(async (c) => ({ c, st: await kvGet('cal:status:' + c.id) })))).map(({ c, st }) => `<li><i style="background:${esc(c.color)}"></i><div><b>${esc(c.name)}</b>${st ? `<small class="${st.ok ? 'cal-ok' : 'cal-bad'}">${st.ok ? `✓ ${st.count} event${st.count === 1 ? '' : 's'} found · ${fmtTime(st.at)}${st.calendars ? ' · ' + esc(st.calendars.join(', ')) : ''}` : `⚠ ${esc(st.error || 'error')} · ${fmtTime(st.at)}`}</small>` : !isApp() && c.type === 'caldav' ? '<small>Synced from the Windows app</small>' : ''}<small>${c.type === 'caldav' ? esc(c.user + ' · ' + c.url.replace('https://', '')) : esc(c.url.replace(/^(https?:\/\/[^/]+).*/, '$1/…'))}</small></div><button class="icon-btn" data-cal-edit="${esc(c.id)}" title="Edit">✎</button></li>`).join('') || '<li class="empty">No calendars yet.</li>'}</ul>
-        <div class="row">${calAt ? `<small class="muted">Updated ${fmtTime(calAt)}</small>` : ''}<span class="spacer"></span><button class="btn primary sm" data-cal-add>+ Add calendar</button></div>
+        <div class="row">${calAt ? `<small class="muted">Updated ${fmtTime(calAt)}</small>` : ''}<span class="spacer"></span><button class="btn ghost sm" data-refresh="calendar" title="Fetch every calendar again now">↻ Refresh</button><button class="btn primary sm" data-cal-add>+ Add calendar</button></div>
         <details class="howto"><summary>Where do I find the link?</summary><p><b>Google Calendar:</b> calendar.google.com → ⚙ Settings → click the calendar under “Settings for my calendars” → Integrate calendar → copy <b>Secret address in iCal format</b>.</p><p><b>Outlook / Microsoft 365 (work):</b> outlook.office.com → ⚙ Settings → Calendar → Shared calendars → Publish a calendar → choose the calendar and “Can view all details” → Publish → copy the <b>ICS</b> link.</p><p>Treat these links like passwords — anyone with one can read that calendar.</p></details>`)}
-      ${!isApp() ? card('Fitbit, Microsoft To Do & notifications', `<p class="muted">These are set up in the Windows app. With sync on, your Fitbit sleep and heart rate appear here too.</p>`) : ''}
+      ${!isApp() ? card('Fitbit & notifications', `<p class="muted">These are set up in the Windows app. With sync on, your Fitbit sleep and heart rate appear here too.</p>`) : ''}
       ${!isApp() ? '' : card('Fitbit Air — sleep & heart rate', `<p class="muted">Needs a free Google Cloud “Desktop app” client (10-minute setup, see the guide). Your health data goes straight from Google to this computer.</p>
         <form data-form="google-settings" class="stack"><label><span>Client ID</span><input name="googleClientId" value="${esc(state.settings.googleClientId || '')}" placeholder="xxxx.apps.googleusercontent.com"></label>
         <label><span>Client secret</span><input name="googleClientSecret" type="password" value="${esc(state.settings.googleClientSecret || '')}" placeholder="GOCSPX-…"><small>Stays on this computer only.</small></label>
         <div class="row">${badge(gs)}<span class="spacer"></span><button class="btn ghost sm" type="submit">Save</button>${gs !== 'disconnected' ? '<button type="button" class="btn ghost sm" data-disconnect="google">Disconnect</button>' : ''}<button type="button" class="btn primary sm" data-connect="google">${gs === 'connected' ? 'Reconnect' : 'Connect'}</button></div></form>`)}
-      ${!isApp() ? '' : card('Microsoft To Do (optional)', `<p class="muted">Your to-do list already works inside the app. Connect this only if you also want tasks from the Microsoft To Do app to show up.</p>
-        <form data-form="ms-settings" class="stack"><label><span>Application (client) ID</span><input name="msClientId" value="${esc(state.settings.msClientId || '')}" placeholder="00000000-0000-0000-0000-000000000000"></label>
-        <div class="row">${badge(ms)}<span class="spacer"></span><button class="btn ghost sm" type="submit">Save</button>${ms !== 'disconnected' ? '<button type="button" class="btn ghost sm" data-disconnect="microsoft">Disconnect</button>' : ''}<button type="button" class="btn primary sm" data-connect="microsoft">${ms === 'connected' ? 'Reconnect' : 'Connect'}</button></div></form>`)}
       ${card('Appearance', `<form data-form="appearance" class="stack">
         <label><span>Theme</span><select name="theme">${[['system', 'Match Windows'], ['dark', 'Dark'], ['light', 'Light']].map(([v, l]) => `<option value="${v}" ${themePref() === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <div class="row"><span>Overwatch widget icon</span><span class="spacer"></span><button type="button" class="btn ghost sm" data-ow-icon>Choose image</button><button type="button" class="btn ghost sm" data-ow-icon-remove>Reset</button></div>
