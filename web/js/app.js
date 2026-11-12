@@ -244,7 +244,7 @@ async function meetingsBlock({ days = 1, max = 6 } = {}) {
   const today0 = startOfDay(), today1 = new Date(today0.getTime() + 864e5);
   const allToday = days === 1 && deviceType() === 'phone' ? evs.filter((e) => new Date(e.end) > today0 && new Date(e.start) < today1) : [];
   const open = !!window.__meetAll;
-  const toggle = allToday.length ? `<button class="meet-toggle ${open ? 'open' : ''}" data-meet-all aria-expanded="${open}"><span>${open ? 'Show upcoming only' : `All of today’s meetings (${allToday.length})`}</span><i>⌄</i></button>` : '';
+  const toggle = '';
   const shown = open && allToday.length ? allToday : items;
   if (!shown.length) return reconnect + empty(days === 1 ? 'No more meetings today' : 'Nothing scheduled.') + toggle;
   return reconnect + `<ul class="events">${shown.map((e) => {
@@ -456,7 +456,7 @@ const VIEW_RENDER = {
     const greet = hr < 5 ? 'Good night' : hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
     const lastNote = list('notes').sort((a, b) => b.updatedAt - a.updatedAt)[0];
     const widgets = [
-      ['meetings', card('Meetings today', await safe(() => meetingsBlock(), 'meetings'), { id: 'meetings', cls: homeCustom() ? '' : 'span2', link: 'schedule', action: '<button class="icon-btn" data-refresh="calendar" title="Refresh">↻</button>' })],
+      ['meetings', card('Meetings today', await safe(() => meetingsBlock(), 'meetings'), { id: 'meetings', cls: homeCustom() ? '' : 'span2', link: 'schedule', action: deviceType() === 'phone' ? `<button class="icon-btn meet-exp ${window.__meetAll ? 'open' : ''}" data-meet-all aria-expanded="${!!window.__meetAll}" title="${window.__meetAll ? 'Show upcoming only' : 'Show all of today’s meetings'}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>` : '' })],
       hasFeature('prayer') && ['prayer', card('Prayer times', await safe(() => prayerBlock(), 'prayer'), { id: 'prayer', cls: 'prayer' })],
       ['todo', card('To-do', await safe(() => todoBlock(), 'todo'), { id: 'todo', link: 'tasks', action: '<button class="icon-btn" data-refresh="todo" title="Refresh">↻</button>' })],
       hasFeature('weather') && ['weather', card('Weather', await safe(() => weatherBlock(), 'weather'), { id: 'weather', link: 'weather', cls: 'weather-card', action: '<button class="icon-btn" data-refresh="weather" title="Refresh">↻</button>' })],
