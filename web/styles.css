@@ -870,3 +870,24 @@ body[data-device=phone] #cube { display: none; }
 .hol-list { grid-template-columns: repeat(auto-fill, minmax(430px, 1fr)); }
 .hol-list li b { min-width: 110px; }
 .hol-adj { opacity: .7; }
+/* Holidays table */
+.hol-table { margin: 0 0 14px; border: 1px solid var(--line-soft); border-radius: 12px; overflow: hidden; }
+.hol-row { display: grid; grid-template-columns: 130px 130px minmax(160px, 1fr) 130px 80px 70px; align-items: center; gap: 12px; padding: 9px 16px; font-size: 13.5px; border-top: 1px solid var(--line-soft); }
+.hol-row:first-child { border-top: 0; }
+.hol-row.head { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); background: rgba(127,127,127,.06); padding-top: 8px; padding-bottom: 8px; }
+.hol-row .d { font-variant-numeric: tabular-nums; color: var(--text); font-weight: 500; }
+.hol-row .wd, .hol-row .len { color: var(--text-3); }
+.hol-row b { font-weight: 500; min-width: 0; }
+.hol-row.obs b, .hol-row.obs .d { color: var(--text-2); font-weight: 400; }
+.hol-row .shifted { margin-left: 10px; color: var(--accent); font-weight: 400; }
+.hol-row .hol-adj { opacity: .75; justify-content: flex-end; }
+.hol-row:not(.head):hover { background: rgba(127,127,127,.05); }
+@media (max-width: 900px) {
+  .hol-row { grid-template-columns: 92px minmax(0, 1fr) auto; gap: 8px; padding: 9px 12px; }
+  .hol-row.head, .hol-row .wd, .hol-row .len { display: none; }
+  .hol-row > span:nth-child(4) { display: none; }
+  .hol-row.obs b::after { content: ' · Islamic date'; color: var(--text-3); font-size: 11px; }
+}
+.hol-adj .icon-btn.sm { opacity: 1; width: 26px; height: 26px; border: 1px solid var(--line); border-radius: 7px; font-size: 15px; color: var(--text-2); }
+.hol-adj .icon-btn.sm:hover { color: var(--accent); border-color: var(--accent); }
+.hol-row .hol-adj { display: flex; gap: 4px; opacity: 1; }
