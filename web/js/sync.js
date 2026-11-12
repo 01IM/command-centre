@@ -169,9 +169,9 @@ async function cycle() {
     if (r.updated_at > localAt) { await setSetting(r.id, r.deleted ? undefined : r.value, { silent: true, at: r.updated_at }); changed = true; }
   }
   for (const r of incoming._meta || []) {
-    if (r.id === 'profilePhoto' && r.updated_at > ((await kvGet('profilePhotoAt')) || 0)) {
-      await kvSet('profilePhoto', r.deleted ? null : r.value); await kvSet('profilePhotoAt', r.updated_at); changed = true;
-      emit({ type: 'profilePhoto' });
+    if (['profilePhoto', 'owIcon'].includes(r.id) && r.updated_at > ((await kvGet(r.id + 'At')) || 0)) {
+      await kvSet(r.id, r.deleted ? null : r.value); await kvSet(r.id + 'At', r.updated_at); changed = true;
+      emit({ type: r.id });
     }
   }
   for (const r of incoming._cube || []) {
@@ -212,6 +212,12 @@ async function cycle() {
     const photo = await kvGet('profilePhoto');
     out.push({ collection: '_meta', id: 'profilePhoto', updated_at: photoAt, deleted: !photo, payload: photo ? await encryptJSON(key, photo) : null });
     pushed['_meta|profilePhoto'] = photoAt;
+  }
+  const iconAt = (await kvGet('owIconAt')) || 0;
+  if (iconAt > (pushed['_meta|owIcon'] || 0)) {
+    const ic = await kvGet('owIcon');
+    out.push({ collection: '_meta', id: 'owIcon', updated_at: iconAt, deleted: !ic, payload: ic ? await encryptJSON(key, ic) : null });
+    pushed['_meta|owIcon'] = iconAt;
   }
   const solves = (await kvGet('cube:solves', [])) || [];
   const solvesSig = solves.length ? solves.length + ':' + (solves[0].at || 0) : '';

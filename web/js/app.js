@@ -240,16 +240,23 @@ async function meetingsBlock({ days = 1, max = 6 } = {}) {
   const until = startOfDay(); until.setDate(until.getDate() + days);
   const items = evs.filter((e) => new Date(e.end) > now && new Date(e.start) < until).slice(0, max);
   const reconnect = cache.calendarError ? `<div class="warn">${esc(cache.calendarError)}</div>` : '';
-  if (!items.length) return reconnect + empty(days === 1 ? 'No more meetings today' : 'Nothing scheduled.');
-  return reconnect + `<ul class="events">${items.map((e) => {
+  // iPhone: a drop-down that lists every meeting of today, including the ones already finished
+  const today0 = startOfDay(), today1 = new Date(today0.getTime() + 864e5);
+  const allToday = days === 1 && deviceType() === 'phone' ? evs.filter((e) => new Date(e.end) > today0 && new Date(e.start) < today1) : [];
+  const open = !!window.__meetAll;
+  const toggle = allToday.length ? `<button class="meet-toggle ${open ? 'open' : ''}" data-meet-all aria-expanded="${open}"><span>${open ? 'Show upcoming only' : `All of today’s meetings (${allToday.length})`}</span><i>⌄</i></button>` : '';
+  const shown = open && allToday.length ? allToday : items;
+  if (!shown.length) return reconnect + empty(days === 1 ? 'No more meetings today' : 'Nothing scheduled.') + toggle;
+  return reconnect + `<ul class="events">${shown.map((e) => {
     const live = new Date(e.start) <= now && new Date(e.end) > now;
     const soon = !live && new Date(e.start) - now < 15 * 60000;
-    return `<li class="${live ? 'live' : ''}">
+    const past = new Date(e.end) <= now;
+    return `<li class="${live ? 'live' : ''}${past ? ' past' : ''}">
       <div class="when">${e.allDay ? 'All day' : fmtTime(e.start)}${days > 1 ? `<small>${fmtDay(e.start)}</small>` : ''}</div>
       <div class="what"><b>${esc(e.title)}</b><small>${e.platform ? `<span class="pill ${e.platform.toLowerCase()}">${e.platform}</span>` : ''}${e.color ? `<i class="cal-dot" style="background:${esc(e.color)}"></i>` : ''}${esc(e.calendar || '')}</small></div>
-      ${e.join ? `<button class="btn ${live || soon ? 'primary' : 'ghost'} sm" data-join="${esc(e.join)}">${live ? 'Join now' : 'Join'}</button>` : ''}
+      ${past ? '<small class="ended">Ended</small>' : e.join ? `<button class="btn ${live || soon ? 'primary' : 'ghost'} sm" data-join="${esc(e.join)}">${live ? 'Join now' : 'Join'}</button>` : ''}
     </li>`;
-  }).join('')}</ul>`;
+  }).join('')}</ul>` + toggle;
 }
 
 // Recurring to-dos: `repeat` holds the weekdays (0 = Sun … 6 = Sat) the task comes back on; `doneOn` is the day it was last ticked.
@@ -388,7 +395,6 @@ async function healthBlock({ detail = false } = {}) {
     <div><small>Latest HR</small><strong>${latest ? latest.bpm + ' <em>bpm</em>' : '—'}</strong><small>${latest ? fmtTime(latest.t) : h.hrError ? 'Not available' : ''}</small></div>
   </div>`;
   if (hrs.length > 1) html += `<div class="spark-wrap">${sparkline(hrs)}<small>24 h heart rate · ${min}–${max} bpm</small></div>`;
-  if (h.at) html += `<small class="muted synced-at">Checked ${fmtTime(new Date(h.at))}</small>`;
   if (detail && days.length) {
     html += `<h3 class="sub">Daily sleep (night + naps)</h3><ul class="nights">${days.map((d) => `<li><span>${fmtDay(d.key)}</span><div class="bar"><i style="width:${Math.min(100, (d.total / 540) * 100)}%"></i></div><b>${minsToHM(d.total)}</b>${d.sessions.length > 1 ? `<small class="nap-note">${breakdown(d)}</small>` : ''}</li>`).join('')}</ul>`;
   }
@@ -679,6 +685,7 @@ const VIEW_RENDER = {
         <div class="row">${badge(ms)}<span class="spacer"></span><button class="btn ghost sm" type="submit">Save</button>${ms !== 'disconnected' ? '<button type="button" class="btn ghost sm" data-disconnect="microsoft">Disconnect</button>' : ''}<button type="button" class="btn primary sm" data-connect="microsoft">${ms === 'connected' ? 'Reconnect' : 'Connect'}</button></div></form>`)}
       ${card('Appearance', `<form data-form="appearance" class="stack">
         <label><span>Theme</span><select name="theme">${[['system', 'Match Windows'], ['dark', 'Dark'], ['light', 'Light']].map(([v, l]) => `<option value="${v}" ${themePref() === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <div class="row"><span>Overwatch widget icon</span><span class="spacer"></span><button type="button" class="btn ghost sm" data-ow-icon>Choose image</button><button type="button" class="btn ghost sm" data-ow-icon-remove>Reset</button></div>
         <div class="row"><span>Home layout</span><span class="spacer"></span><button type="button" class="btn ghost sm" data-layout-edit>Edit layout</button><button type="button" class="btn ghost sm" data-layout-reset>Reset</button></div>
         <div class="row"><button type="button" class="btn ghost sm" data-avatar-change>Change profile picture</button><button type="button" class="btn ghost sm" data-avatar-remove>Remove picture</button><span class="spacer"></span><button class="btn primary sm">Save</button></div></form>`)}
       ${card('Location', `<form data-form="location" class="stack"><label><span>Name</span><input name="name" value="${esc(l.name)}"></label><div class="row2"><label><span>Latitude</span><input name="lat" type="number" step="0.0001" value="${l.lat}"></label><label><span>Longitude</span><input name="lon" type="number" step="0.0001" value="${l.lon}"></label></div><div class="row"><button type="button" class="btn ghost sm" data-reset-loc>Kuwait City</button><span class="spacer"></span><button class="btn primary sm">Save</button></div></form><small class="muted">Used for prayer times (Kuwait method) and weather. Units: °C, km/h.</small>`)}
@@ -1152,6 +1159,9 @@ function bindView(root) {
       if (ds.add === 'budget') return budgetForm({}, { kind: ds.kind || budgetView.tab, cat: ds.cat });
       if (ds.saveToward) { e.stopPropagation(); return saveTowardForm(list('budget').find((x) => x.id === ds.saveToward)); }
       if (ds.avatarChange !== undefined) return pickAvatar();
+      if (ds.meetAll !== undefined) { window.__meetAll = !window.__meetAll; return doRender(false, true); }
+      if (ds.owIcon !== undefined) return pickOwIcon();
+      if (ds.owIconRemove !== undefined) { await kvSet('owIcon', null); await kvSet('owIconAt', Date.now()); Sync.soon(1500); await loadOwIcon(); return toast('Icon reset', 'ok'); }
       if (ds.hshift) {
         const [key, by] = ds.hshift.split(':'); const sh = { ...(state.settings.hijriShifts || {}) };
         const v = Math.max(-2, Math.min(2, (sh[key] || 0) + +by)); if (v) sh[key] = v; else delete sh[key];
@@ -1493,8 +1503,7 @@ function holidayList() {
   const all = holidaysBetween(from, to);
   const years = [...new Set(all.map((h) => h.start.getFullYear()))];
   const openYear = window.__holYear ?? years[0];
-  return `<section class="card holidays"><header><h2>Holidays · next 5 years</h2><small class="muted">Kuwait official + Islamic dates</small></header>
-    <p class="muted hol-note">Islamic dates follow the Umm al-Qura calendar, calculated ahead for every year. If Kuwait announces a date a day earlier or later after the moon sighting, press ‹ or › next to it — every date in that Islamic month moves with it, on all your devices.</p>
+  return `<section class="card holidays"><header><h2>Upcoming holidays</h2></header>
     ${years.map((y) => {
       // one row per holiday: the Eid days are merged into a single line with their date range
       const rows = [];
@@ -1537,6 +1546,25 @@ async function pickAvatar() {
   } catch { toast('That image format isn’t supported — try a JPG or PNG', 'error'); }
 }
 
+// A picture of your own for the Overwatch widget's icon (kept on your devices, never in the app's code).
+async function loadOwIcon() {
+  const url = await kvGet('owIcon');
+  let st = document.getElementById('owIconStyle');
+  if (!st) { st = document.createElement('style'); st.id = 'owIconStyle'; document.head.appendChild(st); }
+  st.textContent = url ? `[data-widget=overwatch] > header h2::before { background: url("${url}") center / 20px 20px no-repeat !important; box-shadow: none !important; } [data-widget=overwatch] > header h2::after { display: none !important; }` : '';
+}
+async function pickOwIcon() {
+  const f = await pickFile('image/*'); if (!f) return;
+  try {
+    const img = await createImageBitmap(f);
+    const size = 96, k = Math.min(size / img.width, size / img.height);
+    const c = document.createElement('canvas'); c.width = c.height = size;
+    c.getContext('2d').drawImage(img, (size - img.width * k) / 2, (size - img.height * k) / 2, img.width * k, img.height * k);
+    await kvSet('owIcon', c.toDataURL('image/png')); await kvSet('owIconAt', Date.now()); Sync.soon(1500);
+    await loadOwIcon(); toast('Icon updated', 'ok');
+  } catch { toast('That image format isn’t supported — try a PNG or JPG', 'error'); }
+}
+
 // ---------- startup ----------
 async function start() {
   await S.loadState();
@@ -1545,7 +1573,7 @@ async function start() {
     for (const [i, s] of DEFAULT_SEASONS.entries()) if (!list('seasons').some((x) => x.name === s.name)) await upsert('seasons', { id: 'ow-default-' + i, ...s });
     await setSetting('owSeasonsSeeded', true);
   }
-  applyTheme(); loadAvatar();
+  applyTheme(); loadAvatar(); loadOwIcon();
   migrateDocImages().catch((e) => console.warn(e));
   $('#avatar').onclick = pickAvatar;
   $('#themeToggle').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
@@ -1558,6 +1586,7 @@ async function start() {
   await Sync.init();
   S.onChange((ev) => {
     if (ev.type === 'profilePhoto') return loadAvatar();
+    if (ev.type === 'owIcon') return loadOwIcon();
     if (ev.type === 'cube') return cube?.reload?.();
     if (ev.collection === '*') loadCaches().then(() => { if (!isApp()) refresh('calendar'); });
     else Sync.soon();
