@@ -9,9 +9,9 @@ const MIN_COL = 330;
 
 let ctl = null;   // the active home grid controller
 
-export function mountHome(grid, { device, layout, defaults, save, editing }) {
+export function mountHome(grid, { device, layout, defaults, save, editing, classic }) {
   ctl?.destroy();
-  ctl = new HomeGrid(grid, { device, layout, defaults, save });
+  ctl = new HomeGrid(grid, { device, layout, defaults, save, classic });
   if (editing) ctl.edit(true);
   return ctl;
 }
@@ -25,16 +25,23 @@ export function orderWidgets(items, layout) {
 }
 
 class HomeGrid {
-  constructor(grid, { device, layout, defaults, save }) {
+  constructor(grid, { device, layout, defaults, save, classic }) {
     this.grid = grid; this.device = device; this.save = save; this.defaults = defaults;
+    this.classic = !!classic; // untouched home: keep the original even-row layout until the first edit
     this.layout = { order: [...(layout?.order || [])], size: { ...(layout?.size || {}) } };
     this.canResize = device === 'desktop';
     this.editing = false;
-    grid.classList.add('masonry');
     this.ro = new ResizeObserver(() => this.queue());
-    this.cards().forEach((c) => this.ro.observe(c));
     this.onWin = () => this.queue(true);
     addEventListener('resize', this.onWin);
+    if (!this.classic) this.toMasonry();
+  }
+  toMasonry() {
+    this.classic = false;
+    // free the stacked pair so each widget can move on its own
+    this.grid.querySelectorAll(':scope > .card-stack').forEach((st) => st.replaceWith(...st.children));
+    this.cards().forEach((c) => { c.classList.remove('span2'); this.ro.observe(c); });
+    this.grid.classList.add('masonry');
     this.apply();
   }
   destroy() { this.ro.disconnect(); removeEventListener('resize', this.onWin); this.edit(false, true); }
@@ -49,6 +56,7 @@ class HomeGrid {
     return Math.min(s || this.defaults[id] || 1, this.n);
   }
   queue(full) {
+    if (this.classic) return;
     if (full) this.full = true;
     if (this.raf) return;
     this.raf = requestAnimationFrame(() => { this.raf = 0; const f = this.full; this.full = false; f ? this.apply() : this.spans(); });
@@ -84,6 +92,7 @@ class HomeGrid {
       this.apply();
     });
     this.save({ order: [], size: {} });
+    this.edit(false); // back to the original layout
   }
 
   // ---------- edit mode ----------
@@ -91,6 +100,7 @@ class HomeGrid {
     if (on === this.editing) return;
     this.editing = on;
     window.__layoutEditing = on;
+    if (on && this.classic) this.toMasonry();
     this.grid.classList.toggle('editing', on);
     for (const c of this.cards()) {
       c.querySelectorAll(':scope > .w-tool').forEach((x) => x.remove());
