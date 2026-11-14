@@ -915,7 +915,7 @@ body[data-device=phone] #cube { display: none; }
 } }
 body { background: var(--page-glow), var(--bg); background-attachment: fixed; }
 .sidebar { border-right-color: var(--frame); }
-.card, #cube { background: var(--card-bg); border-color: var(--frame); position: relative; }
+.card { background: var(--card-bg); border-color: var(--frame); position: relative; }
 .card::before { content: ''; position: absolute; left: 20px; right: 20px; top: -1px; height: 1px; background: linear-gradient(90deg, transparent, var(--hair), transparent); pointer-events: none; }
 .card h2 { font-family: var(--serif); text-transform: none; letter-spacing: .01em; font-size: 17.5px; font-weight: 500; color: var(--title); }
 .card > header { border-bottom: 1px solid color-mix(in srgb, var(--frame) 70%, transparent); padding-bottom: 10px; }
@@ -1057,7 +1057,7 @@ body { background:
   linear-gradient(90deg, var(--grid-line) 1px, transparent 1px) 0 0 / 40px 40px,
   var(--bg); background-attachment: fixed; }
 .sidebar { background: var(--side-bg); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-right: 1px solid var(--line); }
-.card, #cube { background: var(--card-bg); border: 1px solid var(--frame); border-radius: 16px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: var(--shadow); transition: border-color .25s var(--ease); }
+.card, .cube-bar { background: var(--card-bg); border: 1px solid var(--frame); border-radius: 16px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: var(--shadow); transition: border-color .25s var(--ease); }
 .card:hover { border-color: var(--frame-hover); }
 .card::before { display: none; }
 .card > header { border-bottom: 0; padding-bottom: 2px; }
