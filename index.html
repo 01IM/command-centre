@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Command Centre</title>
+  <meta name="description" content="Imran's personal dashboard">
+  <meta name="theme-color" content="#060a14" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f3f5fb" media="(prefers-color-scheme: light)">
+  <link rel="icon" href="icons/icon-192.png">
+  <script>try{var t=localStorage.getItem("cc-theme");if(t&&t!=="system")document.documentElement.dataset.theme=t;}catch(e){}</script>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Command">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <button class="avatar-btn" id="avatar" title="Change profile picture"><span class="initials">IA</span><span class="edit">Change</span></button>
+      <div><b>Command Centre</b><small>Imran M. Ali</small></div>
+    </div>
+    <nav id="nav"></nav>
+    <div class="sidebar-foot">
+      <button class="theme-toggle" id="themeToggle" title="Switch dark / light"><span class="t-ico"></span><span class="t-label">Dark</span></button>
+      <small class="made">Made for Imran by Claude</small>
+      <a class="gh-link" href="https://github.com/01IM/command-centre" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </aside>
+  <div class="content">
+    <div id="cube"></div>
+    <main id="main"></main>
+  </div>
+  <nav id="tabs" class="tabs"></nav>
+  <dialog id="modal"></dialog>
+  <dialog id="viewer" class="viewer"></dialog>
+  <div id="toasts"></div>
+  <noscript>This dashboard needs JavaScript.</noscript>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

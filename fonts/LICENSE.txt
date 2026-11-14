@@ -1,0 +1,2 @@
+Inter typeface (c) The Inter Project Authors — SIL Open Font License 1.1 — https://github.com/rsms/inter
+Subset to Latin for this app.
