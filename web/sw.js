@@ -1,7 +1,7 @@
 // Offline support for the iPhone / iPad (home-screen) version. Not used by the Windows app.
 // App files: network first (so updates arrive), cached copy when offline. API calls are never cached here.
-const VERSION = 'cc-v23';
-const SHELL = ['./', 'index.html', 'styles.css', 'manifest.webmanifest',
+const VERSION = 'cc-v24';
+const SHELL = ['./', 'index.html', 'styles.css', 'fonts/Inter-Regular.woff', 'fonts/Inter-Medium.woff', 'fonts/Inter-SemiBold.woff', 'fonts/Inter-Bold.woff', 'fonts/Inter-ExtraBold.woff', 'fonts/Inter-Black.woff', 'manifest.webmanifest',
   'js/app.js', 'js/store.js', 'js/services.js', 'js/oauth.js', 'js/integrations.js', 'js/cube.js', 'js/ical.js',
   'js/net.js', 'js/visuals.js', 'js/vault.js', 'js/sync.js', 'js/crypto.js', 'js/caldav.js', 'js/layout.js', 'js/holidays.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
