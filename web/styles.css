@@ -1088,3 +1088,17 @@ h1, .page-head h1 { font-weight: 800; letter-spacing: -.025em; color: var(--titl
 [data-widget=prayer] > header h2::before, [data-widget=health] > header h2::before, [data-widget=goals] > header h2::before, [data-widget=budget] > header h2::before { background: color-mix(in srgb, var(--teal) 13%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--teal) 30%, transparent); }
 #tabs { background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid var(--line); }
 .hol-year summary { font-family: var(--sans); font-weight: 700; }
+
+/* =================== iPad / narrow window: compact header =================== */
+/* Greeting and date on the left, Kuwait time on the right of the same row, world clocks in one even strip below — no empty gaps */
+@media (min-width: 641px) and (max-width: 1250px) {
+  .hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "greet clock" "world world"; align-items: end; column-gap: 20px; row-gap: 16px; margin: 2px 0 20px; }
+  .hero > div:not(.clocks) { grid-area: greet; min-width: 0; }
+  .hero .clocks { display: contents; }
+  .hero .clock-main { grid-area: clock; align-items: flex-end; }
+  .hero .clock { font-size: 46px; }
+  .hero h1 { font-size: clamp(28px, 3.4vw, 36px); white-space: nowrap; }
+  .hero .world { grid-area: world; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 0; border: 0; width: 100%; }
+  .hero .world li { justify-content: flex-start; gap: 10px; padding: 10px 14px; background: var(--card-bg); border: 1px solid var(--frame); border-radius: 12px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  .hero .world .mini-clock { width: 34px; height: 34px; flex: none; }
+}
