@@ -1121,3 +1121,20 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-even
 .made { animation: none; background-position: 50% 0; }
 /* Window hidden or in the tray: pause every animation */
 .idle *, .idle *::before, .idle *::after { animation-play-state: paused !important; }
+
+/* =================== Light on the graphics card (chosen by Me) =================== */
+/* No soft shadows */
+.card, .cube-bar, .btn, .btn.primary, .cube-timer, .avatar-btn, .layout-bar, .hero .world li, .chip-ev, .cal-cell, #nav a.active, .tabs, #tabs { box-shadow: none !important; }
+#nav a.active { box-shadow: inset 0 0 0 1px var(--frame-hover) !important; }
+.card:hover { transform: none !important; }
+/* Weather pictures stay, but nothing spins, drifts or flashes */
+.wx-rays, .wx-sun circle, .wx-cloud, .wx-rain line, .wx-snow circle, .wx-bolt, .wx-fog line, .wx-moonicon, [class^="wx-"], [class*=" wx-"] { animation: none !important; }
+/* Solid colours instead of gradient text */
+.hero h1 { background: none !important; -webkit-text-fill-color: currentColor !important; color: var(--title) !important; }
+.stats strong, .ow-next strong, .prayer-next strong { background: none !important; -webkit-text-fill-color: currentColor !important; color: var(--teal) !important; }
+.bar i, .progress i { background: var(--brand) !important; }
+.avatar-btn:not(.has-photo) { background: var(--brand) !important; }
+/* Plain background: no grid, no glow */
+body::before { display: none !important; }
+body { background: var(--bg) !important; }
+.made { background: none !important; -webkit-text-fill-color: currentColor !important; color: var(--text-3) !important; }
