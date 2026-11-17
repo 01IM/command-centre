@@ -1454,6 +1454,7 @@ function checkNotifications() {
 // ---------- live clock / countdowns (no re-render) ----------
 let prayerRefreshing = false;
 function liveUpdate() {
+  if (document.hidden) return; // nothing to draw while the window is hidden or in the tray
   const now = new Date();
   $$('[data-clock]').forEach((el) => { const t = fmtTime(now); if (el.textContent !== t) el.textContent = t; });
   $$('[data-countdown]').forEach((el) => (el.textContent = countdown(+el.dataset.countdown - now)));
@@ -1608,7 +1609,10 @@ async function start() {
   setInterval(liveUpdate, 1000);
   // Coming back to the window (or the laptop waking up): anything older than 5 minutes refreshes straight away.
   const catchUp = () => { for (const k of ['health', 'todo']) if (Date.now() - (LAST[k] || 0) > 5 * 60000) LAST[k] = 0; };
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { LAST.calendar = 0; catchUp(); tick(); } });
+  // Hidden / in the tray: freeze every animation so the graphics card can rest. Syncing carries on.
+  const idle = () => document.documentElement.classList.toggle('idle', document.hidden);
+  idle();
+  document.addEventListener('visibilitychange', () => { idle(); if (!document.hidden) { LAST.calendar = 0; catchUp(); tick(); liveUpdate(); } });
   addEventListener('focus', () => { catchUp(); tick(); });
   addEventListener('focus', () => { if (Date.now() - (LAST.calendar || 0) > 20000) refresh('calendar'); });
   addEventListener('online', () => { for (const k of Object.keys(LAST)) LAST[k] = 0; tick(); });

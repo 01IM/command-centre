@@ -1102,3 +1102,22 @@ h1, .page-head h1 { font-weight: 800; letter-spacing: -.025em; color: var(--titl
   .hero .world li { justify-content: flex-start; gap: 10px; padding: 10px 14px; background: var(--card-bg); border: 1px solid var(--frame); border-radius: 12px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
   .hero .world .mini-clock { width: 34px; height: 34px; flex: none; }
 }
+
+/* =================== Performance: keep the graphics card quiet =================== */
+/* The backdrop is painted once on a fixed layer instead of being repainted behind every card */
+body { background: var(--bg); background-attachment: scroll; }
+body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(900px 520px at 12% -10%, var(--glow-a), transparent 62%),
+    radial-gradient(900px 600px at 95% 70%, var(--glow-b), transparent 60%),
+    linear-gradient(var(--grid-line) 1px, transparent 1px) 0 0 / 40px 40px,
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px) 0 0 / 40px 40px; }
+/* No live blur behind cards and the sidebar (they are almost opaque, so it looks the same) */
+:root { --card-bg: linear-gradient(180deg, rgba(19,28,53,.94), rgba(10,16,32,.94)); --side-bg: rgba(6,10,20,.92); }
+:root[data-theme=light] { --card-bg: linear-gradient(180deg, #fff, #f8faff); --side-bg: rgba(255,255,255,.94); }
+@media (prefers-color-scheme: light) { :root:not([data-theme=dark]) { --card-bg: linear-gradient(180deg, #fff, #f8faff); --side-bg: rgba(255,255,255,.94); } }
+.card, .cube-bar, .sidebar, .hero .world li { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+/* The footer text no longer shimmers forever */
+.made { animation: none; background-position: 50% 0; }
+/* Window hidden or in the tray: pause every animation */
+.idle *, .idle *::before, .idle *::after { animation-play-state: paused !important; }
