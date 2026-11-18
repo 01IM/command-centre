@@ -168,18 +168,18 @@ export async function syncHealth() {
       t: asDate(deepFind(p.heartRate || p, ['sampleTime', 'physicalTime', 'startTime'])),
       bpm: Number(deepFind(p.heartRate || p, ['beatsPerMinute', 'bpm', 'value'])),
     })).filter((x) => x.t && x.bpm);
-    const recentFrom = new Date(now - 2 * 3600 * 1000);
-    const recent = toHr(await listPoints('heart-rate', `${F} >= "${recentFrom.toISOString()}"`, 1000));
+    // Each hour is read in full (so the graph has the whole day, evenly), then squeezed to one reading per minute.
     const hours = [];
-    for (let h = 24; h > 2; h--) hours.push([new Date(now - h * 3600 * 1000), new Date(now - (h - 1) * 3600 * 1000)]);
-    const sampled = [];
+    for (let h = 24; h > 0; h--) hours.push([new Date(now - h * 3600 * 1000), new Date(now - (h - 1) * 3600 * 1000)]);
+    const raw = [];
     for (let i = 0; i < hours.length; i += 6) { // six at a time, so it stays quick without flooding Google
       const got = await Promise.all(hours.slice(i, i + 6).map(([a, b]) =>
-        listPage('heart-rate', `${F} >= "${a.toISOString()}" AND ${F} < "${b.toISOString()}"`, 30).then(toHr).catch(() => [])));
-      got.forEach((g) => sampled.push(...g));
+        listPoints('heart-rate', `${F} >= "${a.toISOString()}" AND ${F} < "${b.toISOString()}"`, 1000).then(toHr).catch(() => [])));
+      got.forEach((g) => raw.push(...g));
     }
-    const seen = new Set();
-    out.hr = [...sampled, ...recent].filter((x) => { const k = +x.t; if (seen.has(k)) return false; seen.add(k); return true; }).sort((a, b) => a.t - b.t);
+    const perMin = new Map();
+    for (const x of raw) { const k = Math.floor(+x.t / 60000); const m = perMin.get(k) || { sum: 0, n: 0, t: x.t }; m.sum += x.bpm; m.n++; if (x.t > m.t) m.t = x.t; perMin.set(k, m); }
+    out.hr = [...perMin.values()].map((m) => ({ t: m.t, bpm: Math.round(m.sum / m.n) })).sort((a, b) => a.t - b.t);
     if (!out.hr.length) { // older API behaviour: one query for the whole day
       out.hr = toHr(await listPoints('heart-rate', `${F} >= "${dayAgo.toISOString()}"`, 1440)).sort((a, b) => a.t - b.t);
     }

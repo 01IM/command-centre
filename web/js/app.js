@@ -442,23 +442,11 @@ function overwatchBlock() {
     ${next ? `<div class="ow-next"><span>${esc(label(next))}</span><strong data-countdown="${next.t}">${countdown(next.t - Date.now())}</strong><small>${fmtDate(next.t, { weekday: 'short', day: 'numeric', month: 'short' })} · ${fmtTime(next.t)} your time${next.note ? ' · ' + esc(next.note) : ''}</small></div>` : ''}</div>`;
 }
 
-// 24 h heart-rate line: readings are averaged per half hour (they arrive unevenly — dense for the last
-// couple of hours, sparse before), placed on a fixed 24 h time axis and drawn as a smooth curve.
 function sparkline(points, w = 300, h = 60) {
   if (points.length < 2) return '';
-  const end = Date.now(), start = end - 24 * 3600e3, slot = 30 * 60e3;
-  const buckets = new Map();
-  for (const p of points) { const t = p.t.getTime(); if (t < start || t > end) continue; const k = Math.floor((t - start) / slot); const b = buckets.get(k) || { sum: 0, n: 0 }; b.sum += p.bpm; b.n++; buckets.set(k, b); }
-  const pts = [...buckets.entries()].sort((a, b) => a[0] - b[0]).map(([k, b]) => ({ x: ((k + 0.5) * slot) / (end - start) * w, v: b.sum / b.n }));
-  if (pts.length < 2) return '';
-  const lo = Math.min(...pts.map((p) => p.v)) - 4, hi = Math.max(...pts.map((p) => p.v)) + 4;
-  const xy = pts.map((p) => [p.x, h - ((p.v - lo) / (hi - lo || 1)) * h]);
-  let d = `M${xy[0][0].toFixed(1)},${xy[0][1].toFixed(1)}`;
-  for (let i = 0; i < xy.length - 1; i++) { // Catmull-Rom → Bézier for a smooth line
-    const p0 = xy[i - 1] || xy[i], p1 = xy[i], p2 = xy[i + 1], p3 = xy[i + 2] || p2;
-    const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6], c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
-    d += `C${c1[0].toFixed(1)},${c1[1].toFixed(1)} ${c2[0].toFixed(1)},${c2[1].toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
-  }
+  const xs = points.map((p) => p.t.getTime()), ys = points.map((p) => p.bpm);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys) - 3, y1 = Math.max(...ys) + 3;
+  const d = points.map((p, i) => `${i ? 'L' : 'M'}${(((p.t - x0) / (x1 - x0 || 1)) * w).toFixed(1)},${(h - ((p.bpm - y0) / (y1 - y0 || 1)) * h).toFixed(1)}`).join('');
   return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path d="${d}" /></svg>`;
 }
 
