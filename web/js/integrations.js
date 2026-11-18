@@ -134,6 +134,12 @@ async function listPoints(type, filter, pageSize) {
   return all;
 }
 
+async function listPage(type, filter, pageSize) {
+  const params = new URLSearchParams({ filter, pageSize });
+  const res = await json(await gFetch(`${HEALTH}/${type}/dataPoints?${params}`));
+  return res.dataPoints || [];
+}
+
 export async function syncHealth() {
   const now = new Date();
   const dayAgo = new Date(now - 24 * 3600 * 1000);
@@ -153,13 +159,30 @@ export async function syncHealth() {
     }).filter((s) => s.start).sort((a, b) => b.start - a.start);
   } catch (e) { out.sleepError = e.message; }
 
-  // Heart rate samples (last 24 h)
+  // Heart rate. A full day can hold tens of thousands of samples, more than the API hands back in one go,
+  // so the newest readings used to get cut off. Now: the last 2 hours are read in full (for "Latest HR"),
+  // and the rest of the day is sampled hour by hour (for the 24 h chart).
   try {
-    const pts = await listPoints('heart-rate', `heart_rate.sample_time.physical_time >= "${dayAgo.toISOString()}"`, 1440);
-    out.hr = pts.map((p) => ({
+    const F = 'heart_rate.sample_time.physical_time';
+    const toHr = (pts) => pts.map((p) => ({
       t: asDate(deepFind(p.heartRate || p, ['sampleTime', 'physicalTime', 'startTime'])),
       bpm: Number(deepFind(p.heartRate || p, ['beatsPerMinute', 'bpm', 'value'])),
-    })).filter((x) => x.t && x.bpm).sort((a, b) => a.t - b.t);
+    })).filter((x) => x.t && x.bpm);
+    const recentFrom = new Date(now - 2 * 3600 * 1000);
+    const recent = toHr(await listPoints('heart-rate', `${F} >= "${recentFrom.toISOString()}"`, 1000));
+    const hours = [];
+    for (let h = 24; h > 2; h--) hours.push([new Date(now - h * 3600 * 1000), new Date(now - (h - 1) * 3600 * 1000)]);
+    const sampled = [];
+    for (let i = 0; i < hours.length; i += 6) { // six at a time, so it stays quick without flooding Google
+      const got = await Promise.all(hours.slice(i, i + 6).map(([a, b]) =>
+        listPage('heart-rate', `${F} >= "${a.toISOString()}" AND ${F} < "${b.toISOString()}"`, 30).then(toHr).catch(() => [])));
+      got.forEach((g) => sampled.push(...g));
+    }
+    const seen = new Set();
+    out.hr = [...sampled, ...recent].filter((x) => { const k = +x.t; if (seen.has(k)) return false; seen.add(k); return true; }).sort((a, b) => a.t - b.t);
+    if (!out.hr.length) { // older API behaviour: one query for the whole day
+      out.hr = toHr(await listPoints('heart-rate', `${F} >= "${dayAgo.toISOString()}"`, 1440)).sort((a, b) => a.t - b.t);
+    }
   } catch (e) { out.hrError = e.message; }
 
   // Daily resting heart rate (last 7 days)

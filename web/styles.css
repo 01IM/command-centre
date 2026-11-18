@@ -1138,3 +1138,12 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-even
 body::before { display: none !important; }
 body { background: var(--bg) !important; }
 .made { background: none !important; -webkit-text-fill-color: currentColor !important; color: var(--text-3) !important; }
+/* To-do: repeat drop-down (shown while adding a task) */
+.quick-add .repeat-opt { gap: 6px; }
+.quick-add .repeat-opt > span { color: var(--accent); font-size: 13px; }
+.quick-add .repeat-opt select { width: auto; flex: none; height: 28px; min-height: 0; padding: 0 26px 0 10px; font-size: 12px; border-radius: 8px; background-color: var(--field-bg); border: 1px solid var(--chip-line); color: var(--text-2); }
+.quick-add:has(.repeat-opt option[value=""]:not(:checked)) .repeat-opt { max-height: 34px; opacity: 1; margin-top: 0; pointer-events: auto; }
+.quick-add:focus-within .repeat-opt, .quick-add:has(input[name=title]:not(:placeholder-shown)) .repeat-opt { max-height: 34px; }
+/* Meetings you added yourself can be tapped to edit */
+[data-edit-meeting] { cursor: pointer; }
+.events li.manual:hover b, .events .what[data-edit-meeting]:hover b { color: var(--accent); }

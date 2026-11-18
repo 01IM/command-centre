@@ -1,6 +1,7 @@
 import * as S from './store.js';
 import { getPrayerSchedule, getWeather, wmo, loc, DEFAULT_SEASONS, DEFAULT_LOCATION } from './services.js';
 import * as I from './integrations.js';
+import { platformOf } from './ical.js';
 import { disconnect } from './oauth.js';
 import { isApp, openExternal, joinMeeting } from './net.js';
 import { wxIcon, moonInfo, moonSVG, clockFace, zoneTime } from './visuals.js';
@@ -233,9 +234,49 @@ function connectCta(provider, what) {
   return `<div class="connect"><p>${esc(what)}</p><button class="btn primary sm" data-connect="${provider}">Connect ${name}</button></div>`;
 }
 
+// Meetings you add yourself (with a tag such as Ignixtech or Plot.it and your own Zoom link), shown alongside your calendars.
+const MEET_TAGS = ['Ignixtech', 'Plot.it', 'Personal'];
+const TAG_COLORS = ['#7c93ff', '#2dd4bf', '#f59e0b', '#f472b6', '#a78bfa', '#34d399', '#fb7185', '#38bdf8'];
+function tagColor(tag) {
+  const cal = I.calendars().find((c) => c.name.toLowerCase() === String(tag || '').toLowerCase());
+  if (cal) return cal.color;
+  let h = 0; for (const ch of String(tag || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return TAG_COLORS[h % TAG_COLORS.length];
+}
+function manualMeetings(from = new Date(0), to = new Date(8.64e15)) {
+  return list('meetings').map((m) => {
+    const start = new Date(`${m.date}T${m.time || '09:00'}`);
+    const end = new Date(start.getTime() + (Number(m.duration) || 60) * 60000);
+    return { id: 'm-' + m.id, mid: m.id, manual: true, title: m.title, start, end, join: m.link || null, platform: m.link ? platformOf(m.link) : null,
+      calendar: m.tag || 'Meeting', calId: 'manual', color: tagColor(m.tag), location: m.notes || '' };
+  }).filter((e) => !isNaN(e.start) && e.end >= from && e.start <= to);
+}
+const allMeetings = () => [...(cache.calendar?.events || []), ...manualMeetings()].sort((a, b) => new Date(a.start) - new Date(b.start));
+function meetingForm(m = {}, { date } = {}) {
+  const tags = [...new Set([...MEET_TAGS, ...I.calendars().map((c) => c.name), ...list('meetings').map((x) => x.tag).filter(Boolean)])];
+  openForm({
+    title: m.id ? 'Edit meeting' : 'New meeting',
+    fields: [
+      { name: 'title', label: 'Meeting', required: true, value: m.title, placeholder: 'Call with…', wide: true },
+      { name: 'tag', label: 'Tag', value: m.tag || 'Ignixtech', suggest: tags, placeholder: 'Ignixtech, Plot.it…' },
+      { name: 'date', label: 'Date', type: 'date', required: true, value: m.date || date || ymd(new Date()) },
+      { name: 'time', label: 'Start', type: 'time', required: true, value: m.time },
+      { name: 'duration', label: 'Length', type: 'select', options: [['15', '15 min'], ['30', '30 min'], ['45', '45 min'], ['60', '1 hour'], ['90', '1½ hours'], ['120', '2 hours']], value: String(m.duration || 60) },
+      { name: 'link', label: 'Zoom / Teams / Meet link', value: m.link, placeholder: 'https://zoom.us/j/…', wide: true },
+      { name: 'notes', label: 'Notes (optional)', value: m.notes, wide: true },
+    ],
+    onSubmit: (v) => {
+      const link = (v.link || '').trim();
+      if (link && !/^https?:\/\//i.test(link) && !/^zoommtg:/i.test(link)) throw new Error('The link should start with https://');
+      return upsert('meetings', { ...m, ...v, tag: (v.tag || '').trim(), link });
+    },
+    onDelete: m.id ? () => remove('meetings', m.id) : null,
+  });
+}
+
 async function meetingsBlock({ days = 1, max = 6 } = {}) {
-  const evs = cache.calendar?.events || [];
-  if (!I.calendars().length) return `<div class="connect"><p>Add your calendars (Google, Plot.it…) to see your Zoom, Teams and Meet calls.</p><a class="btn primary sm" href="#settings">Add calendar</a></div>`;
+  const evs = allMeetings();
+  if (!I.calendars().length && !list('meetings').length) return `<div class="connect"><p>Add your calendars (Google, Plot.it…) to see your Zoom, Teams and Meet calls.</p><a class="btn primary sm" href="#settings">Add calendar</a></div>`;
   const now = new Date();
   const until = startOfDay(); until.setDate(until.getDate() + days);
   const items = evs.filter((e) => new Date(e.end) > now && new Date(e.start) < until).slice(0, max);
@@ -253,7 +294,7 @@ async function meetingsBlock({ days = 1, max = 6 } = {}) {
     const past = new Date(e.end) <= now;
     return `<li class="${live ? 'live' : ''}${past ? ' past' : ''}">
       <div class="when">${e.allDay ? 'All day' : fmtTime(e.start)}${days > 1 ? `<small>${fmtDay(e.start)}</small>` : ''}</div>
-      <div class="what"><b>${esc(e.title)}</b><small>${e.platform ? `<span class="pill ${e.platform.toLowerCase()}">${e.platform}</span>` : ''}${e.color ? `<i class="cal-dot" style="background:${esc(e.color)}"></i>` : ''}${esc(e.calendar || '')}</small></div>
+      <div class="what"${e.manual ? ` data-edit-meeting="${esc(e.mid)}" title="Edit meeting"` : ''}><b>${esc(e.title)}</b><small>${e.platform ? `<span class="pill ${e.platform.toLowerCase()}">${e.platform}</span>` : ''}${e.color ? `<i class="cal-dot" style="background:${esc(e.color)}"></i>` : ''}${esc(e.calendar || '')}</small></div>
       ${past ? '<small class="ended">Ended</small>' : e.join ? `<button class="btn ${live || soon ? 'primary' : 'ghost'} sm" data-join="${esc(e.join)}">${live ? 'Join now' : 'Join'}</button>` : ''}
     </li>`;
   }).join('')}</ul>` + toggle;
@@ -262,7 +303,9 @@ async function meetingsBlock({ days = 1, max = 6 } = {}) {
 // Recurring to-dos: `repeat` holds the weekdays (0 = Sun … 6 = Sat) the task comes back on; `doneOn` is the day it was last ticked.
 const REPEATS = { mon_thu: [1, 2, 3, 4], daily: [0, 1, 2, 3, 4, 5, 6], sun_thu: [0, 1, 2, 3, 4] };
 const DAY3 = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const repeatLabel = (r) => { const k = Object.keys(REPEATS).find((x) => REPEATS[x].join() === r.join()); return k === 'daily' ? 'Every day' : k === 'mon_thu' ? 'Mon–Thu' : k === 'sun_thu' ? 'Sun–Thu' : r.map((d) => DAY3[d]).join(', '); };
+const repeatLabel = (r) => { const k = Object.keys(REPEATS).find((x) => REPEATS[x].join() === r.join()); return k === 'daily' ? 'Daily' : k === 'mon_thu' ? 'Mon–Thu' : k === 'sun_thu' ? 'Sun–Thu' : r.length === 1 ? 'Every ' + DAY3[r[0]] : r.map((d) => DAY3[d]).join(', '); };
+const repeatKey = (r) => !r?.length ? '' : Object.keys(REPEATS).find((k) => REPEATS[k].join() === r.join()) || (r.length === 1 ? 'weekly' : '');
+const repeatDays = (key, dateStr) => key === 'weekly' ? [(dateStr ? D(dateStr) : new Date()).getDay()] : REPEATS[key] || null;
 const repeatsToday = (t) => t.repeat?.includes(new Date().getDay());
 const nextRepeat = (t) => { for (let i = 1; i <= 7; i++) { const d = new Date(Date.now() + i * 864e5); if (t.repeat.includes(d.getDay())) return i === 1 ? 'tomorrow' : DAY3[d.getDay()]; } return ''; };
 
@@ -277,10 +320,10 @@ async function todoBlock({ max = 7, showAdd = true, page = false } = {}) {
     return { ...t, local: true, recurring: true, offDay: !on, doneToday: on && t.doneOn === today };
   });
   const tasks = [...local, ...ms];
-  const rank = (t) => (t.offDay ? 3 : t.doneToday ? 2 : t.recurring ? 0 : 1);
+  const rank = (t) => (t.offDay ? 3 : t.doneToday ? 2 : t.recurring ? 1 : 0); // recurring tasks sit at the bottom
   const sorted = [...tasks].sort((a, b) => rank(a) - rank(b) || (a.due || '9999').localeCompare(b.due || '9999') || (b.importance === 'high') - (a.importance === 'high'));
   const add = showAdd ? `<form class="quick-add" data-form="todo"><input name="title" placeholder="Add a task…" autocomplete="off"><input name="due" type="text" placeholder="Due date" title="Due date (optional)" onfocus="this.type='date'" onblur="if(!this.value)this.type='text'"><button class="btn primary sm">Add</button>
-    <label class="repeat-opt" title="Comes back every Monday, Tuesday, Wednesday and Thursday"><input type="checkbox" name="repeat" value="mon_thu"><span>↻ Repeat Mon–Thu</span></label></form>` : '';
+    <label class="repeat-opt"><span>↻</span><select name="repeat" aria-label="Repeat"><option value="">Doesn’t repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="mon_thu">Mon–Thu</option></select></label></form>` : '';
   const note = '';
   const reconnect = status === 'reconnect' ? `<div class="warn">Microsoft needs a quick reconnect. <button class="link" data-connect="microsoft">Reconnect</button></div>` : '';
   const items = sorted.slice(0, max);
@@ -461,7 +504,7 @@ const VIEW_RENDER = {
     const greet = hr < 5 ? 'Good night' : hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
     const lastNote = list('notes').sort((a, b) => b.updatedAt - a.updatedAt)[0];
     const widgets = [
-      ['meetings', card('Meetings today', await safe(() => meetingsBlock(), 'meetings'), { id: 'meetings', cls: homeCustom() ? '' : 'span2', link: 'schedule', action: deviceType() === 'phone' ? `<button class="icon-btn meet-exp ${window.__meetAll ? 'open' : ''}" data-meet-all aria-expanded="${!!window.__meetAll}" title="${window.__meetAll ? 'Show upcoming only' : 'Show all of today’s meetings'}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>` : '' })],
+      ['meetings', card('Meetings today', await safe(() => meetingsBlock(), 'meetings'), { id: 'meetings', cls: homeCustom() ? '' : 'span2', link: 'schedule', action: '<span class="card-actions">' + (deviceType() === 'phone' ? `<button class="icon-btn meet-exp ${window.__meetAll ? 'open' : ''}" data-meet-all aria-expanded="${!!window.__meetAll}" title="${window.__meetAll ? 'Show upcoming only' : 'Show all of today’s meetings'}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>` : '') + '<button class="icon-btn" data-add="meeting" title="Add a meeting">+</button></span>' })],
       hasFeature('prayer') && ['prayer', card('Prayer times', await safe(() => prayerBlock(), 'prayer'), { id: 'prayer', cls: 'prayer' })],
       ['todo', card('To-do', await safe(() => todoBlock(), 'todo'), { id: 'todo', link: 'tasks', action: '<button class="icon-btn" data-refresh="todo" title="Refresh">↻</button>' })],
       hasFeature('weather') && ['weather', card('Weather', await safe(() => weatherBlock(), 'weather'), { id: 'weather', link: 'weather', cls: 'weather-card', action: '<button class="icon-btn" data-refresh="weather" title="Refresh">↻</button>' })],
@@ -493,6 +536,7 @@ const VIEW_RENDER = {
     setHijriShifts(state.settings.hijriShifts);
     const showHolidays = !(state.settings.hiddenCalendars || []).includes('holidays');
     if (showHolidays) evs.push(...holidaysBetween(gridStart, gridEnd));
+    if (!(state.settings.hiddenCalendars || []).includes('manual')) evs.push(...manualMeetings(gridStart, gridEnd));
     const plans = list('plans');
     const byDay = new Map();
     const add = (key, item) => { if (!byDay.has(key)) byDay.set(key, []); byDay.get(key).push(item); };
@@ -520,14 +564,14 @@ const VIEW_RENDER = {
     }
     const selItems = byDay.get(sel) || [];
     const agenda = selItems.length ? `<ul class="events">${selItems.map((x) => x.kind === 'meeting'
-      ? `<li><div class="when">${x.e.allDay ? 'All day' : fmtTime(x.e.start)}</div><div class="what"><b>${esc(x.e.title)}</b><small>${x.e.holiday ? `<span class="pill holiday">Holiday</span>${esc(x.e.note)}` : ''}${x.e.platform ? `<span class="pill ${x.e.platform.toLowerCase()}">${x.e.platform}</span>` : ''}${x.e.allDay ? '' : 'until ' + fmtTime(x.e.end)}${x.e.location && !x.e.join ? ' · ' + esc(x.e.location) : ''}</small></div>${x.e.join ? `<button class="btn ghost sm" data-join="${esc(x.e.join)}">Join</button>` : ''}</li>`
+      ? `<li${x.e.manual ? ` data-edit-meeting="${esc(x.e.mid)}" class="manual"` : ''}><div class="when">${x.e.allDay ? 'All day' : fmtTime(x.e.start)}</div><div class="what"><b>${esc(x.e.title)}</b><small>${x.e.manual ? `<i class="cal-dot" style="background:${esc(x.e.color)}"></i>${esc(x.e.calendar)}` : ''}${x.e.holiday ? `<span class="pill holiday">Holiday</span>${esc(x.e.note)}` : ''}${x.e.platform ? `<span class="pill ${x.e.platform.toLowerCase()}">${x.e.platform}</span>` : ''}${x.e.allDay ? '' : 'until ' + fmtTime(x.e.end)}${x.e.location && !x.e.join ? ' · ' + esc(x.e.location) : ''}</small></div>${x.e.join ? `<button class="btn ghost sm" data-join="${esc(x.e.join)}">Join</button>` : ''}</li>`
       : `<li class="plan" data-edit-plan="${x.p.id}"><div class="when">${x.p.time ? fmtTime(new Date(x.p.date + 'T' + x.p.time)) : PLAN_ICONS[x.p.type || 'other']}</div><div class="what"><b>${esc(x.p.title)}</b><small><span class="pill plan">${esc(x.p.type || 'other')}</span>${x.p.where ? esc(x.p.where) : ''}${x.p.end && x.p.end !== x.p.date ? ' · until ' + fmtDay(x.p.end) : ''}</small></div></li>`).join('')}</ul>` : empty('Nothing on this day.');
     const monthName = first.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
     return `<div class="page-head"><h1>${monthName}</h1><div class="actions">
         <div class="seg"><button class="btn ghost" data-cal="-1" aria-label="Previous month">‹</button><button class="btn ghost" data-cal="0">Today</button><button class="btn ghost" data-cal="1" aria-label="Next month">›</button></div>
-        <button class="btn ghost" data-refresh="calendar" title="Refresh">↻</button><button class="btn primary" data-add="plan" data-date="${sel}">+ Add plan</button></div></div>
+        <button class="btn ghost" data-refresh="calendar" title="Refresh">↻</button><button class="btn ghost" data-add="meeting" data-date="${sel}">+ Meeting</button><button class="btn primary" data-add="plan" data-date="${sel}">+ Add plan</button></div></div>
       ${!I.calendars().length ? `<section class="card banner"><div class="connect"><p>Add your calendars in Settings (e.g. Personal and Plot.it) to see all your meetings here.</p><a class="btn primary sm" href="#settings">Settings</a></div></section>` : ''}
-      <div class="cal-legend">${I.calendars().map((c) => `<button class="legend ${(state.settings.hiddenCalendars || []).includes(c.id) ? 'off' : ''}" data-cal-toggle="${esc(c.id)}" title="Show / hide"><i style="background:${esc(c.color)}"></i>${esc(c.name)}</button>`).join('')}<button class="legend ${showHolidays ? '' : 'off'}" data-cal-toggle="holidays" title="Show / hide"><i style="background:${HOLIDAY_COLOR}"></i>Holidays</button><span class="legend plans"><i></i>Your plans</span></div>
+      <div class="cal-legend">${I.calendars().map((c) => `<button class="legend ${(state.settings.hiddenCalendars || []).includes(c.id) ? 'off' : ''}" data-cal-toggle="${esc(c.id)}" title="Show / hide"><i style="background:${esc(c.color)}"></i>${esc(c.name)}</button>`).join('')}${list('meetings').length ? `<button class="legend ${(state.settings.hiddenCalendars || []).includes('manual') ? 'off' : ''}" data-cal-toggle="manual" title="Show / hide"><i style="background:var(--accent)"></i>Added meetings</button>` : ''}<button class="legend ${showHolidays ? '' : 'off'}" data-cal-toggle="holidays" title="Show / hide"><i style="background:${HOLIDAY_COLOR}"></i>Holidays</button><span class="legend plans"><i></i>Your plans</span></div>
       <div class="cal-layout">
         <section class="card cal"><div class="cal-head">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => `<span>${d}</span>`).join('')}</div><div class="cal-grid">${cells.join('')}</div></section>
         <section class="card agenda"><header><h2>${sel === todayKey ? 'Today' : fmtDay(sel)}</h2><small>${relDays(daysUntil(sel))}</small></header>${agenda}</section>
@@ -1102,9 +1146,13 @@ function taskForm(t) {
       { name: 'title', label: 'Task', required: true, value: t.title, wide: true },
       { name: 'due', label: 'Due date', type: 'date', value: t.due || '' },
       { name: 'important', label: 'Priority', type: 'select', options: [['', 'Normal'], ['1', 'Important']], value: t.importance === 'high' ? '1' : '' },
-      { name: 'repeat', label: 'Repeats', type: 'select', options: [['', 'Does not repeat'], ['mon_thu', 'Mon, Tue, Wed & Thu'], ['sun_thu', 'Sun–Thu (work week)'], ['daily', 'Every day']], value: Object.keys(REPEATS).find((k) => REPEATS[k].join() === (t.repeat || []).join()) || '' },
+      { name: 'repeat', label: 'Repeats', type: 'select', options: [['', 'Does not repeat'], ['daily', 'Daily'], ['weekly', 'Weekly'], ['mon_thu', 'Mon, Tue, Wed & Thu'], ['sun_thu', 'Sun–Thu (work week)']], value: repeatKey(t.repeat) },
+      { name: 'weekday', label: 'Weekly on', type: 'select', options: DAY3.map((d, i) => [String(i), d]), value: String(t.repeat?.length === 1 ? t.repeat[0] : new Date().getDay()) },
     ],
-    onSubmit: (v) => upsert('localTasks', { ...t, title: v.title, due: v.repeat ? null : v.due || null, importance: v.important ? 'high' : 'normal', repeat: v.repeat ? REPEATS[v.repeat] : null, doneOn: v.repeat ? t.doneOn || null : null, done: v.repeat ? false : t.done }),
+    onSubmit: (v) => {
+      const days = v.repeat === 'weekly' ? [+v.weekday] : v.repeat ? REPEATS[v.repeat] : null;
+      return upsert('localTasks', { ...t, title: v.title, due: days ? null : v.due || null, importance: v.important ? 'high' : 'normal', repeat: days, doneOn: days ? t.doneOn || null : null, done: days ? false : t.done });
+    },
     onDelete: () => remove('localTasks', t.id) });
 }
 
@@ -1145,6 +1193,8 @@ function bindView(root) {
     if (fileCard && !e.target.closest('button')) { if (e.detail === 2) return V.openFile(fileCard.dataset.file); return; }
     const bud = e.target.closest('[data-edit-budget]');
     if (bud && !e.target.closest('button')) return budgetForm(list('budget').find((x) => x.id === bud.dataset.editBudget));
+    const mt = e.target.closest('[data-edit-meeting]');
+    if (mt && !e.target.closest('button')) return meetingForm(list('meetings').find((x) => x.id === mt.dataset.editMeeting));
     const t = e.target.closest('button, [data-edit-plan], [data-edit-doc], [data-edit-trip], [data-edit-season], [data-day]');
     if (!t) return;
     const ds = t.dataset;
@@ -1202,6 +1252,7 @@ function bindView(root) {
       if (ds.cal !== undefined) { const n = +ds.cal; if (n === 0) { const t = new Date(); calView.y = t.getFullYear(); calView.m = t.getMonth(); calView.sel = null; } else { const d = new Date(calView.y, calView.m + n, 1); calView.y = d.getFullYear(); calView.m = d.getMonth(); } return doRender(true); }
       if (ds.day) { calView.sel = ds.day; const d = D(ds.day); if (d.getMonth() !== calView.m) { calView.y = d.getFullYear(); calView.m = d.getMonth(); return doRender(true); } return render(); }
       if (ds.add === 'plan') return planForm(ds.date ? { date: ds.date } : {});
+      if (ds.add === 'meeting') return meetingForm({}, { date: ds.date });
       if (ds.add === 'goal') return goalForm();
       if (ds.add === 'doc') return await docForm();
       if (ds.add === 'trip') return tripForm();
@@ -1277,8 +1328,9 @@ function bindView(root) {
     try {
       if (kind === 'todo') {
         if (!v.title.trim()) return;
-        await upsert('localTasks', { title: v.title.trim(), due: v.repeat ? null : v.due || null, done: false, ...(v.repeat ? { repeat: REPEATS[v.repeat], doneOn: null } : {}) });
-        if (v.repeat) toast('Added · repeats Mon–Thu', 'ok');
+        const days = v.repeat ? repeatDays(v.repeat, v.due) : null;
+        await upsert('localTasks', { title: v.title.trim(), due: days ? null : v.due || null, done: false, ...(days ? { repeat: days, doneOn: null } : {}) });
+        if (days) toast('Added · repeats ' + repeatLabel(days), 'ok');
       } else if (kind === 'quicknote') {
         if (!v.text.trim()) return; await upsert('notes', { text: v.text.trim() }); toast('Note saved', 'ok');
       } else if (kind === 'checkpoint') {
@@ -1430,7 +1482,7 @@ async function notify(key, title, body) {
 function checkNotifications() {
   const now = Date.now();
   if (state.settings.notifyMeetings !== false) {
-    for (const e of cache.calendar?.events || []) {
+    for (const e of allMeetings()) {
       if (e.allDay) continue;
       const diff = new Date(e.start) - now;
       if (diff > 0 && diff <= 10 * 60000) notify('ev:' + e.id + e.start, `${e.title} in ${Math.ceil(diff / 60000)} min`, e.platform ? `${e.platform} — open Command Centre and press Join` : e.location || '');

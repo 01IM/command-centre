@@ -62,7 +62,7 @@ export async function fileKeys() {
 }
 
 // ---------- app state ----------
-export const COLLECTIONS = ['plans', 'goals', 'docs', 'trips', 'notes', 'seasons', 'localTasks', 'flights', 'budget'];
+export const COLLECTIONS = ['plans', 'goals', 'docs', 'trips', 'notes', 'seasons', 'localTasks', 'flights', 'budget', 'meetings'];
 
 export const state = {
   data: Object.fromEntries(COLLECTIONS.map((c) => [c, []])),
