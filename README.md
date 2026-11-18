@@ -1,6 +1,6 @@
 # Command Centre
 
-Me's personal dashboard for **Windows, iPhone and iPad**, kept in sync. It runs on its own: no Claude, no subscriptions, nothing to pay for.
+A personal dashboard for **Windows, iPhone and iPad**, kept in sync. It runs on its own: no Claude, no subscriptions, nothing to pay for.
 
 **What's on it:** a 3×3 scramble and timer · Kuwait time plus London, New York and Karachi clocks · a month calendar of your meetings and plans, with **Join** opening the Zoom/Teams app directly · Kuwait prayer times with a countdown · a 7-day forecast in °C with an hourly chart and moon phase · to-do list · goals with checkpoints · document and visa expiry reminders · travel history · Fitbit Air sleep and heart rate · Overwatch season countdown · quick notes.
 

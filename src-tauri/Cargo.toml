@@ -1,7 +1,7 @@
 [package]
 name = "command-centre"
 version = "1.0.0"
-description = "Me's personal dashboard"
+description = "Personal dashboard"
 edition = "2021"
 
 [build-dependencies]

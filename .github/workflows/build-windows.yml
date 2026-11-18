@@ -37,3 +37,18 @@ jobs:
           releaseBody: Download the file ending in "-setup.exe" below and run it.
           releaseDraft: false
           prerelease: false
+
+      # Keep only the newest installer: delete every older release and its tag.
+      - name: Remove older releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          keep="build${{ github.run_number }}"
+          gh release list --repo "${{ github.repository }}" --limit 500 --json tagName --jq '.[].tagName' | while read -r tag; do
+            case "$tag" in *"-$keep") echo "keeping $tag" ;; *) echo "deleting $tag"; gh release delete "$tag" --repo "${{ github.repository }}" --yes --cleanup-tag || true ;; esac
+          done
+          # tags left behind without a release
+          git ls-remote --tags origin | awk '{print $2}' | sed 's#refs/tags/##; s#\^{}##' | sort -u | while read -r tag; do
+            case "$tag" in *"-$keep") ;; *) git push origin --delete "$tag" || true ;; esac
+          done

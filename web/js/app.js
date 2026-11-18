@@ -126,10 +126,37 @@ const HIDDEN_ON = { phone: ['files', 'weather', 'cube', 'prayer'], tablet: ['fil
 const hasFeature = (f) => !HIDDEN_ON[deviceType()].includes(f);
 const views = () => VIEWS.filter(([id]) => hasFeature(id));
 const mobileTabs = () => ['home', 'schedule', 'tasks', hasFeature('files') ? 'files' : 'documents', 'more'];
-const people = () => (state.settings.people?.length ? state.settings.people : ['Me']);
+// Your name lives in your own settings (synced, encrypted), never in the app's code.
+const myName = () => (state.settings.displayName || state.settings.people?.[0] || '').trim();
+const firstName = () => myName().split(/\s+/)[0] || '';
+const initials = () => myName().split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join('').toUpperCase() || '•';
+function applyName() {
+  document.querySelectorAll('.avatar-btn .initials').forEach((el) => (el.textContent = initials()));
+  const sub = document.querySelector('.brand small'); if (sub) sub.textContent = myName();
+  const made = document.querySelector('.sidebar-foot .made'); if (made) made.textContent = firstName() ? `Made for ${firstName()} by Claude` : 'Made by Claude';
+}
+const people = () => (state.settings.people?.length ? state.settings.people : [firstName() || 'Me']);
 const filesView = { person: null, category: 'All', q: '' };
 let docsPerson = 'All';
 const travelView = { tab: 'trips' };
+document.addEventListener('toggle', (e) => { const ds = e.target?.dataset || {}; if (!e.target.open) return; if (ds.flYear) travelView.flYear = ds.flYear; if (ds.tripYear) travelView.tripYear = ds.tripYear; }, true);
+// Short country / city names written out in full (UK → United Kingdom, UAE → United Arab Emirates…)
+const COUNTRY_ABBR = { UK: 'United Kingdom', GB: 'United Kingdom', 'U.K.': 'United Kingdom', GBR: 'United Kingdom', England: 'United Kingdom (England)', Scotland: 'United Kingdom (Scotland)', Wales: 'United Kingdom (Wales)',
+  US: 'United States', USA: 'United States', 'U.S.': 'United States', 'U.S.A.': 'United States', America: 'United States',
+  UAE: 'United Arab Emirates', 'U.A.E.': 'United Arab Emirates', Emirates: 'United Arab Emirates', KSA: 'Saudi Arabia', Saudi: 'Saudi Arabia', KW: 'Kuwait', KWT: 'Kuwait',
+  PK: 'Pakistan', PAK: 'Pakistan', IN: 'India', IND: 'India', MY: 'Malaysia', MYS: 'Malaysia', SG: 'Singapore', SGP: 'Singapore', QA: 'Qatar', QAT: 'Qatar', BH: 'Bahrain', BHR: 'Bahrain', OM: 'Oman', OMN: 'Oman',
+  TR: 'Turkey', TUR: 'Turkey', 'Türkiye': 'Turkey', NL: 'Netherlands', NLD: 'Netherlands', Holland: 'Netherlands', DE: 'Germany', DEU: 'Germany', FR: 'France', FRA: 'France', IT: 'Italy', ITA: 'Italy', ES: 'Spain', ESP: 'Spain',
+  CH: 'Switzerland', CHE: 'Switzerland', AT: 'Austria', BE: 'Belgium', IE: 'Ireland', CA: 'Canada', CAN: 'Canada', AU: 'Australia', AUS: 'Australia', NZ: 'New Zealand', JP: 'Japan', JPN: 'Japan', CN: 'China', CHN: 'China',
+  HK: 'Hong Kong', TH: 'Thailand', THA: 'Thailand', ID: 'Indonesia', IDN: 'Indonesia', LK: 'Sri Lanka', EG: 'Egypt', EGY: 'Egypt', JO: 'Jordan', LB: 'Lebanon', AZ: 'Azerbaijan', GE: 'Georgia', MV: 'Maldives', ZA: 'South Africa',
+  KR: 'South Korea', Korea: 'South Korea', RU: 'Russia', RUS: 'Russia', PH: 'Philippines', VN: 'Vietnam', BD: 'Bangladesh', NP: 'Nepal', IR: 'Iran', IQ: 'Iraq', CZ: 'Czechia', 'Czech Republic': 'Czechia', GR: 'Greece', PT: 'Portugal' };
+const CITY_ABBR = { NYC: 'New York City', NY: 'New York', LA: 'Los Angeles', SF: 'San Francisco', DC: 'Washington, D.C.', KL: 'Kuala Lumpur', KHI: 'Karachi', LHE: 'Lahore', ISB: 'Islamabad', DXB: 'Dubai', AUH: 'Abu Dhabi', KWI: 'Kuwait City', LDN: 'London', MCR: 'Manchester', BHX: 'Birmingham', AMS: 'Amsterdam', IST: 'Istanbul', JED: 'Jeddah', RUH: 'Riyadh', DOH: 'Doha' };
+function countryName(c) {
+  const k = String(c || '').trim(); if (!k) return '';
+  if (COUNTRY_ABBR[k] || COUNTRY_ABBR[k.toUpperCase()]) return COUNTRY_ABBR[k] || COUNTRY_ABBR[k.toUpperCase()];
+  if (/^[A-Z]{2}$/.test(k)) { try { const n = new Intl.DisplayNames(['en'], { type: 'region' }).of(k); if (n && n !== k) return n; } catch { /* keep as typed */ } }
+  return k;
+}
+const cityNames = (s) => String(s || '').split(/\s*[,/;]\s*/).filter(Boolean).map((c) => CITY_ABBR[c] || CITY_ABBR[c.toUpperCase()] || c).join(', ');
 const fmtSize = (b) => b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(0) + ' KB' : (b / 1048576).toFixed(1) + ' MB';
 const WORLD = [['London', 'Europe/London'], ['New York', 'America/New_York'], ['Karachi', 'Asia/Karachi']];
 const calView = { y: new Date().getFullYear(), m: new Date().getMonth(), sel: null };
@@ -172,6 +199,7 @@ function isBusy() {
   return !!(a && $('#main').contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && (a.value || a.type === 'date'));
 }
 async function doRender(entering, force = false) {
+  applyName();
   if (!entering && !force && isBusy()) { pendingAfter = true; return; }
   if (rendering) { pendingAfter = true; return; }
   rendering = true;
@@ -504,7 +532,7 @@ const VIEW_RENDER = {
     const greet = hr < 5 ? 'Good night' : hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
     const lastNote = list('notes').sort((a, b) => b.updatedAt - a.updatedAt)[0];
     const widgets = [
-      ['meetings', card('Meetings today', await safe(() => meetingsBlock(), 'meetings'), { id: 'meetings', cls: homeCustom() ? '' : 'span2', link: 'schedule', action: '<span class="card-actions">' + (deviceType() === 'phone' ? `<button class="icon-btn meet-exp ${window.__meetAll ? 'open' : ''}" data-meet-all aria-expanded="${!!window.__meetAll}" title="${window.__meetAll ? 'Show upcoming only' : 'Show all of today’s meetings'}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>` : '') + '<button class="icon-btn" data-add="meeting" title="Add a meeting">+</button></span>' })],
+      ['meetings', card('Meetings today', await safe(() => meetingsBlock(), 'meetings'), { id: 'meetings', cls: homeCustom() ? '' : 'span2', link: 'schedule', action: (deviceType() === 'phone' ? `<button class="icon-btn meet-exp ${window.__meetAll ? 'open' : ''}" data-meet-all aria-expanded="${!!window.__meetAll}" title="${window.__meetAll ? 'Show upcoming only' : 'Show all of today’s meetings'}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>` : '') })],
       hasFeature('prayer') && ['prayer', card('Prayer times', await safe(() => prayerBlock(), 'prayer'), { id: 'prayer', cls: 'prayer' })],
       ['todo', card('To-do', await safe(() => todoBlock(), 'todo'), { id: 'todo', link: 'tasks', action: '<button class="icon-btn" data-refresh="todo" title="Refresh">↻</button>' })],
       hasFeature('weather') && ['weather', card('Weather', await safe(() => weatherBlock(), 'weather'), { id: 'weather', link: 'weather', cls: 'weather-card', action: '<button class="icon-btn" data-refresh="weather" title="Refresh">↻</button>' })],
@@ -516,7 +544,7 @@ const VIEW_RENDER = {
       ['overwatch', card('Overwatch', await safe(() => overwatchBlock(), 'overwatch'), { id: 'overwatch', cls: 'ow-card' })],
       ['note', card('Quick note', `<form data-form="quicknote" class="quick-note"><textarea name="text" rows="3" placeholder="Jot something down…"></textarea><button class="btn primary sm">Save note</button></form>${lastNote ? `<a class="more" href="#notes">Last: ${esc(lastNote.text.slice(0, 60))}${lastNote.text.length > 60 ? '…' : ''}</a>` : ''}`, { id: 'note' })],
     ].filter(Boolean);
-    return `<div class="hero"><button class="avatar-btn hero-avatar ${avatarUrl ? 'has-photo' : ''}" data-avatar-change title="Change profile picture" style="${avatarUrl ? `background-image:url('${avatarUrl}')` : ''}"><span class="initials">IA</span></button><div><h1>${greet}, Me</h1><p data-clock-date>${now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p></div>
+    return `<div class="hero"><button class="avatar-btn hero-avatar ${avatarUrl ? 'has-photo' : ''}" data-avatar-change title="Change profile picture" style="${avatarUrl ? `background-image:url('${avatarUrl}')` : ''}"><span class="initials">${esc(initials())}</span></button><div><h1>${greet}${firstName() ? ', ' + esc(firstName()) : ''}</h1><p data-clock-date>${now.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p></div>
       <div class="clocks"><div class="clock-main"><span class="clock" data-clock>${fmtTime(now)}</span><small>Kuwait</small></div>
       <ul class="world">${WORLD.map(([city, tz]) => `<li data-zone="${tz}">${clockFace(38)}<div><b data-zone-text>${zoneTime(tz, now).text}</b><small>${city}<em data-zone-day></em></small></div></li>`).join('')}</ul></div></div>
     <div class="grid home-grid">${homeCustom() ? orderWidgets(widgets, state.settings['homeLayout_' + deviceType()]).map((w) => w[1]).join('')
@@ -658,26 +686,43 @@ const VIEW_RENDER = {
   },
 
   async travel() {
+    const fullCountry = countryName;
     const tabs = `<div class="seg tabs-seg"><button class="btn ${travelView.tab === 'trips' ? 'on' : 'ghost'}" data-travel-tab="trips">Trips</button><button class="btn ${travelView.tab === 'flights' ? 'on' : 'ghost'}" data-travel-tab="flights">Flights</button></div>`;
     if (travelView.tab === 'flights') return flightsView(tabs);
-    const trips = list('trips').sort((a, b) => b.from.localeCompare(a.from));
-    const countries = new Map();
-    for (const t of trips) countries.set(t.country, (countries.get(t.country) || 0) + 1);
-    const daysAbroad = trips.reduce((s, t) => s + Math.max(1, Math.round((D(t.to || t.from) - D(t.from)) / 86400000) + 1), 0);
-    const years = new Map();
-    for (const t of trips) { const y = t.from.slice(0, 4); years.set(y, (years.get(y) || 0) + 1); }
+    const trips = list('trips').filter((t) => t.from).sort((a, b) => b.from.localeCompare(a.from));
+    const tripDays = (t) => Math.max(1, Math.round((D(t.to || t.from) - D(t.from)) / 86400000));
+    const countries = new Map(), reasons = new Map(), byYear = new Map();
+    for (const t of trips) {
+      const c = fullCountry(t.country); countries.set(c, (countries.get(c) || 0) + 1);
+      if (t.reason) reasons.set(t.reason, (reasons.get(t.reason) || 0) + 1);
+      const y = t.from.slice(0, 4); if (!byYear.has(y)) byYear.set(y, []); byYear.get(y).push(t);
+    }
+    const daysAway = trips.reduce((s, t) => s + tripDays(t), 0);
+    const years = [...byYear.keys()].sort((a, b) => b.localeCompare(a));
     const thisYear = String(new Date().getFullYear());
+    const openYear = travelView.tripYear ?? years[0];
+    const bars = (rows, max = 6) => { const top = rows.slice(0, max); const hi = top[0]?.[1] || 1; return `<ul class="rank">${top.map(([k, n]) => `<li><span>${esc(k)}</span><div class="bar"><i style="width:${(n / hi) * 100}%"></i></div><b>${n}</b></li>`).join('')}</ul>`; };
+    const dm = (d) => D(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    const range = (t) => !t.to || t.to === t.from ? dm(t.from) : `${dm(t.from)} – ${D(t.to).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', ...(t.to.slice(0, 4) !== t.from.slice(0, 4) ? { year: 'numeric' } : {}) })}`;
+    const reasonPill = (r) => r ? `<span class="pill reason r-${esc(r.toLowerCase().replace(/[^a-z]/g, ''))}">${esc(r)}</span>` : '<span class="muted">—</span>';
     return `<div class="page-head"><h1>Travel history</h1><div class="actions">${tabs}<button class="btn ghost" data-import="trips">Import CSV</button><button class="btn primary" data-add="trip">+ Add trip</button></div></div>
       <div class="stat-row">
         <div class="stat"><strong>${trips.length}</strong><small>trips</small></div>
         <div class="stat"><strong>${countries.size}</strong><small>countries</small></div>
-        <div class="stat"><strong>${daysAbroad}</strong><small>days away</small></div>
-        <div class="stat"><strong>${years.get(thisYear) || 0}</strong><small>trips in ${thisYear}</small></div>
+        <div class="stat"><strong>${daysAway}</strong><small>days away</small></div>
+        <div class="stat"><strong>${byYear.get(thisYear)?.length || 0}</strong><small>trips in ${thisYear}</small></div>
       </div>
-      ${trips.length ? `<section class="card"><h2>Countries</h2><div class="chips">${[...countries.entries()].sort((a, b) => b[1] - a[1]).map(([c, n]) => `<span class="chip">${esc(c)} <b>${n}</b></span>`).join('')}</div></section>
-      <section class="card"><table class="table"><thead><tr><th>Dates</th><th>Country</th><th>Cities</th></tr></thead><tbody>
-      ${trips.map((t) => `<tr data-edit-trip="${t.id}"><td>${fmtDate(t.from)}${t.to && t.to !== t.from ? ' – ' + fmtDate(t.to) : ''}</td><td>${esc(t.country)}</td><td>${esc(t.cities || '')}</td></tr>`).join('')}
-      </tbody></table></section>` : card('No trips yet', empty('Import your travel log (CSV with columns: from, to, country, cities) or add trips one by one.'))}`;
+      ${trips.length ? `<div class="fl-grid">
+        ${card('Countries', bars([...countries.entries()].sort((a, b) => b[1] - a[1])))}
+        ${card('Reasons', reasons.size ? bars([...reasons.entries()].sort((a, b) => b[1] - a[1])) : empty('Add a reason to your trips (Leisure, Studies, Home…) to see them here.'))}
+        ${card('Trips per year', bars(years.slice(0, 6).map((y) => [y, byYear.get(y).length])))}
+      </div>
+      <section class="card fl-log"><header><h2>Trip log</h2></header>
+      ${years.map((y) => { const ts = byYear.get(y); const d = ts.reduce((s, t) => s + tripDays(t), 0); return `<details class="fl-year" data-trip-year="${y}" ${y === openYear ? 'open' : ''}><summary>${y}<small>${ts.length} trip${ts.length > 1 ? 's' : ''} · ${d} day${d > 1 ? 's' : ''} away</small></summary>
+        <table class="table trips"><thead><tr><th>Dates</th><th>Country</th><th>Reason</th><th>Cities</th><th>Days</th></tr></thead><tbody>
+        ${ts.map((t) => `<tr data-edit-trip="${t.id}"><td class="d">${range(t)}</td><td><b>${esc(fullCountry(t.country))}</b></td><td>${reasonPill(t.reason)}</td><td class="cities">${esc(cityNames(t.cities))}</td><td class="t">${tripDays(t)}</td></tr>`).join('')}
+        </tbody></table></details>`; }).join('')}
+      </section>` : card('No trips yet', empty('Import your travel log (CSV with columns: from, to, country, reason, cities) or add trips one by one.'))}`;
   },
 
   async health() {
@@ -694,7 +739,7 @@ const VIEW_RENDER = {
   },
 
   async more() {
-    return `<div class="page-head"><h1>More</h1><div class="actions"><button class="btn ghost" data-theme-flip>${document.documentElement.dataset.theme === 'dark' ? 'Light mode' : 'Dark mode'}</button></div></div><div class="more-grid">${views().filter(([id]) => !mobileTabs().includes(id)).map(([id, label]) => `<a href="#${id}" class="card more-tile">${icon(id)}<span>${label}</span></a>`).join('')}</div><p class="muted made-m">Made for Me by Claude<br><a class="gh-link" href="https://github.com/01IM/command-centre" target="_blank" rel="noopener">GitHub</a></p>`;
+    return `<div class="page-head"><h1>More</h1><div class="actions"><button class="btn ghost" data-theme-flip>${document.documentElement.dataset.theme === 'dark' ? 'Light mode' : 'Dark mode'}</button></div></div><div class="more-grid">${views().filter(([id]) => !mobileTabs().includes(id)).map(([id, label]) => `<a href="#${id}" class="card more-tile">${icon(id)}<span>${label}</span></a>`).join('')}</div><p class="muted made-m">${firstName() ? `Made for ${esc(firstName())} by Claude` : 'Made by Claude'}<br><a class="gh-link" href="https://github.com/01IM/command-centre" target="_blank" rel="noopener">GitHub</a></p>`;
   },
 
   async settings() {
@@ -722,6 +767,7 @@ const VIEW_RENDER = {
       <div class="settings-col">
       ${syncCard}
       ${card('Appearance', `<form data-form="appearance" class="stack">
+        <label><span>Your name</span><input name="displayName" value="${esc(state.settings.displayName || myName())}" placeholder="First and last name" autocomplete="name"></label>
         <label><span>Theme</span><select name="theme">${[['system', 'Match Windows'], ['dark', 'Dark'], ['light', 'Light']].map(([v, l]) => `<option value="${v}" ${themePref() === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <div class="row"><span>Overwatch widget icon</span><span class="spacer"></span><button type="button" class="btn ghost sm" data-ow-icon>Choose image</button><button type="button" class="btn ghost sm" data-ow-icon-remove>Reset</button></div>
         <div class="row"><span>Home layout</span><span class="spacer"></span><button type="button" class="btn ghost sm" data-layout-edit>Edit layout</button><button type="button" class="btn ghost sm" data-layout-reset>Reset</button></div>
@@ -729,7 +775,7 @@ const VIEW_RENDER = {
       ${card('Overwatch dates', `<ul class="seasons">${list('seasons').sort((a, b) => a.date.localeCompare(b.date)).map((s) => `<li data-edit-season="${s.id}"><b>${esc(s.name)}</b><small>${s.kind === 'mid' ? 'Mid-season · ' : ''}${fmtDate(s.date, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })} ${fmtTime(s.date)}${s.note ? ' · ' + esc(s.note) : ''}</small></li>`).join('')}</ul><button class="btn ghost sm" data-add="season">+ Add date</button>`)}
       </div>
       <div class="settings-col">
-      ${card('Calendars', `<p class="muted">Add each calendar you want to see — e.g. your Google calendar and your Plot.it work calendar. They're all merged into one view, each in its own colour.</p>
+      ${card('Calendars', `<p class="muted">Add each calendar you want to see — e.g. your personal Google calendar and your work calendar. They're all merged into one view, each in its own colour.</p>
         <ul class="cal-list">${(await Promise.all(I.calendars().map(async (c) => ({ c, st: await kvGet('cal:status:' + c.id) })))).map(({ c, st }) => `<li><i style="background:${esc(c.color)}"></i><div><b>${esc(c.name)}</b>${st ? `<small class="${st.ok ? 'cal-ok' : 'cal-bad'}">${st.ok ? `✓ ${st.count} event${st.count === 1 ? '' : 's'} found · ${fmtTime(st.at)}${st.calendars ? ' · ' + esc(st.calendars.join(', ')) : ''}` : `⚠ ${esc(st.error || 'error')} · ${fmtTime(st.at)}`}</small>` : !isApp() && c.type === 'caldav' ? '<small>Synced from the Windows app</small>' : ''}<small>${c.type === 'caldav' ? esc(c.user + ' · ' + c.url.replace('https://', '')) : esc(c.url.replace(/^(https?:\/\/[^/]+).*/, '$1/…'))}</small></div><button class="icon-btn" data-cal-edit="${esc(c.id)}" title="Edit">✎</button></li>`).join('') || '<li class="empty">No calendars yet.</li>'}</ul>
         <div class="row">${calAt ? `<small class="muted">Updated ${fmtTime(calAt)}</small>` : ''}<span class="spacer"></span><button class="btn ghost sm" data-refresh="calendar" title="Fetch every calendar again now">↻ Refresh</button><button class="btn primary sm" data-cal-add>+ Add calendar</button></div>
         <details class="howto"><summary>Where do I find the link?</summary><p><b>Google Calendar:</b> calendar.google.com → ⚙ Settings → click the calendar under “Settings for my calendars” → Integrate calendar → copy <b>Secret address in iCal format</b>.</p><p><b>Outlook / Microsoft 365 (work):</b> outlook.office.com → ⚙ Settings → Calendar → Shared calendars → Publish a calendar → choose the calendar and “Can view all details” → Publish → copy the <b>ICS</b> link.</p><p>Treat these links like passwords — anyone with one can read that calendar.</p></details>`)}
@@ -852,39 +898,53 @@ function saveTowardForm(x) {
 // ---------- flights (myFlightradar24 export) ----------
 const ap = (s) => { const m = (s || '').match(/^(.*?)\s*\/\s*(.*?)\s*\(([A-Z0-9]{3})\/([A-Z0-9]{4})\)/); return m ? { city: m[1], name: m[2], iata: m[3] } : { city: s, name: s, iata: (s || '').slice(0, 3).toUpperCase() }; };
 const airlineName = (s) => (s || '').replace(/\s*\(.*\)\s*$/, '');
-const aircraftName = (s) => (s || '').replace(/\s*\(.*\)\s*$/, '');
+const aircraftName = (s) => (s || '').replace(/\s*\(.*\)\s*$/, '').trim();
+// One entry per aircraft model: 737-800, 737 MAX 8 and 737-300 all count as "Boeing 737"; A320-200 and A320neo as "Airbus A320".
+const aircraftFamily = (s) => {
+  const n = aircraftName(s); if (!n) return '';
+  const m = n.match(/^(Boeing)\s+(7\d7)/i) || n.match(/^(Airbus)\s+(A3\d\d)/i) || n.match(/^(Embraer)\s+(E?\d{3})/i) || n.match(/^(ATR)\s+(\d{2})/i) || n.match(/^(Bombardier|De Havilland Canada)\s+(\S+)/i);
+  return m ? `${m[1]} ${m[2].toUpperCase()}` : n;
+};
 const durMin = (s) => { const m = (s || '').match(/(\d+):(\d+)/); return m ? +m[1] * 60 + +m[2] : 0; };
 
 function flightsView(tabs) {
-  const fl = list('flights').sort((a, b) => (b.date + b.dep).localeCompare(a.date + a.dep));
-  const head = `<div class="page-head"><h1>Flights</h1><div class="actions">${tabs}<button class="btn primary" data-import="flights">Import Flightradar24 CSV</button></div></div>`;
-  if (!fl.length) return head + card('No flights yet', empty('In my.flightradar24.com go to Settings → Export and import the CSV here.'));
+  const fl = list('flights').filter((f) => f.date).sort((a, b) => (b.date + b.dep).localeCompare(a.date + a.dep));
+  const head = `<div class="page-head"><h1>Flights</h1><div class="actions">${tabs}<button class="icon-btn add-round" data-import="flights" title="Import a Flightradar24 CSV" aria-label="Import a Flightradar24 CSV">+</button></div></div>`;
+  if (!fl.length) return head + card('No flights yet', empty('In my.flightradar24.com go to Settings → Export, then press + here to import the file.'));
   const mins = fl.reduce((s, f) => s + durMin(f.duration), 0);
   const count = (key) => { const m = new Map(); for (const f of fl) { const k = key(f); if (k) m.set(k, (m.get(k) || 0) + 1); } return [...m.entries()].sort((a, b) => b[1] - a[1]); };
   const apSet = new Map();
-  for (const f of fl) for (const a of [ap(f.from), ap(f.to)]) apSet.set(a.iata, { ...a, n: (apSet.get(a.iata)?.n || 0) + 1 });
+  for (const f of fl) for (const a of [ap(f.from), ap(f.to)]) if (a.iata) apSet.set(a.iata, { ...a, n: (apSet.get(a.iata)?.n || 0) + 1 });
   const airlines = count((f) => airlineName(f.airline));
-  const aircraft = count((f) => aircraftName(f.aircraft));
+  const aircraft = count((f) => aircraftFamily(f.aircraft));
   const routes = count((f) => [ap(f.from).iata, ap(f.to).iata].sort().join(' ⇄ '));
   const longest = [...fl].sort((a, b) => durMin(b.duration) - durMin(a.duration))[0];
   const thisYear = String(new Date().getFullYear());
+  const byYear = new Map();
+  for (const f of fl) { const y = f.date.slice(0, 4); if (!byYear.has(y)) byYear.set(y, []); byYear.get(y).push(f); }
+  const years = [...byYear.keys()].sort((a, b) => b.localeCompare(a));
+  const openYear = travelView.flYear ?? years[0];
   const bars = (rows, max = 6) => { const top = rows.slice(0, max); const hi = top[0]?.[1] || 1; return `<ul class="rank">${top.map(([k, n]) => `<li><span>${esc(k)}</span><div class="bar"><i style="width:${(n / hi) * 100}%"></i></div><b>${n}</b></li>`).join('')}</ul>`; };
+  const yearBars = bars(years.slice(0, 6).map((y) => [y, byYear.get(y).length]), 6);
+  const row = (f) => { const a = ap(f.from), b = ap(f.to); return `<tr><td class="d">${new Date(f.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</td><td class="num">${esc(f.number)}</td><td><b>${a.iata}</b> → <b>${b.iata}</b><small class="route-cities">${esc(a.city)} → ${esc(b.city)}</small></td><td>${esc(airlineName(f.airline))}</td><td>${esc(aircraftName(f.aircraft))}</td><td class="t">${minsToHM(durMin(f.duration))}</td></tr>`; };
   return head + `<div class="stat-row">
       <div class="stat"><strong>${fl.length}</strong><small>flights</small></div>
       <div class="stat"><strong>${Math.round(mins / 60)}<em class="unit">h</em></strong><small>in the air · ${(mins / 1440).toFixed(1)} days</small></div>
       <div class="stat"><strong>${apSet.size}</strong><small>airports</small></div>
-      <div class="stat"><strong>${fl.filter((f) => f.date.startsWith(thisYear)).length}</strong><small>flights in ${thisYear}</small></div>
+      <div class="stat"><strong>${byYear.get(thisYear)?.length || 0}</strong><small>flights in ${thisYear}</small></div>
     </div>
-    <div class="grid">
+    <div class="fl-grid">
       ${card('Top routes', bars(routes))}
       ${card('Airlines', bars(airlines))}
       ${card('Aircraft', bars(aircraft))}
       ${card('Airports', bars([...apSet.values()].sort((a, b) => b.n - a.n).map((a) => [`${a.iata} · ${a.city}`, a.n])))}
-      ${longest ? card('Longest flight', `<div class="longest"><strong>${ap(longest.from).iata} → ${ap(longest.to).iata}</strong><small>${esc(longest.number)} · ${esc(airlineName(longest.airline))} · ${minsToHM(durMin(longest.duration))}</small><small>${fmtDate(longest.date)} · ${esc(aircraftName(longest.aircraft))}</small></div>`) : ''}
+      ${card('Flights per year', yearBars)}
+      ${longest ? card('Longest flight', `<div class="longest"><strong>${ap(longest.from).iata} → ${ap(longest.to).iata}</strong><small>${esc(ap(longest.from).city)} → ${esc(ap(longest.to).city)}</small><small>${esc(longest.number)} · ${esc(airlineName(longest.airline))} · ${minsToHM(durMin(longest.duration))}</small><small>${fmtDate(longest.date)} · ${esc(aircraftName(longest.aircraft))}</small></div>`) : ''}
     </div>
-    <section class="card" style="margin-top:18px"><table class="table flights"><thead><tr><th>Date</th><th>Flight</th><th>Route</th><th>Airline</th><th>Aircraft</th><th>Time</th></tr></thead><tbody>
-    ${fl.map((f) => { const a = ap(f.from), b = ap(f.to); return `<tr><td>${fmtDate(f.date)}</td><td>${esc(f.number)}</td><td><b>${a.iata}</b> → <b>${b.iata}</b><small class="route-cities">${esc(a.city)} → ${esc(b.city)}</small></td><td>${esc(airlineName(f.airline))}</td><td>${esc(aircraftName(f.aircraft))}</td><td>${minsToHM(durMin(f.duration))}</td></tr>`; }).join('')}
-    </tbody></table></section>`;
+    <section class="card fl-log"><header><h2>Flight log</h2></header>
+    ${years.map((y) => { const list_ = byYear.get(y); const m = list_.reduce((s, f) => s + durMin(f.duration), 0); return `<details class="fl-year" data-fl-year="${y}" ${y === openYear ? 'open' : ''}><summary>${y}<small>${list_.length} flight${list_.length > 1 ? 's' : ''} · ${minsToHM(m)}</small></summary>
+      <table class="table flights"><thead><tr><th>Date</th><th>Flight</th><th>Route</th><th>Airline</th><th>Aircraft</th><th>Time</th></tr></thead><tbody>${list_.map(row).join('')}</tbody></table></details>`; }).join('')}
+    </section>`;
 }
 
 function docCard(d) {
@@ -1016,6 +1076,7 @@ function tripForm(t = {}) {
       { name: 'from', label: 'From', type: 'date', required: true, value: t.from },
       { name: 'to', label: 'To', type: 'date', value: t.to },
       { name: 'country', label: 'Country', required: true, value: t.country },
+      { name: 'reason', label: 'Reason', value: t.reason, suggest: ['Leisure', 'Studies', 'Home', 'Umrah', 'Transit', 'Work', 'Family', 'Medical'] },
       { name: 'cities', label: 'Cities', value: t.cities, wide: true },
     ],
     onSubmit: (v) => upsert('trips', { ...t, ...v }),
@@ -1097,8 +1158,8 @@ async function calendarForm(c = {}) {
       { name: 'color', label: 'Colour', type: 'select', options: I.CAL_COLORS.map((x, i) => [x, ['Gold', 'Blue', 'Green', 'Red', 'Lilac', 'Orange', 'Teal', 'Pink'][i]]), value: color },
       { name: 'type', label: 'Kind of calendar', type: 'select', wide: true, value: type, options: [['ics', 'Google / Outlook — private iCal link'], ['caldav', 'Work email calendar (CalDAV, e.g. Plot.it / cPanel)']] },
       { name: 'url', label: 'iCal / ICS link', value: type === 'ics' ? c.url : '', wide: true, placeholder: 'https://calendar.google.com/calendar/ical/…/basic.ics', hint: 'Google: “Secret address in iCal format”. Outlook: Publish a calendar → ICS link.', group: 'ics' },
-      { name: 'server', label: 'Server', value: type === 'caldav' ? c.url : 'https://mail.yourcompany.com:2080', wide: true, hint: 'From your email provider. Plot.it: https://mail.yourcompany.com:2080', group: 'caldav' },
-      { name: 'user', label: 'Email / username', value: c.user || 'you@yourcompany.com', group: 'caldav' },
+      { name: 'server', label: 'Server', value: c.url || '', placeholder: 'https://mail.yourcompany.com:2080', wide: true, hint: 'From your email provider. Plot.it: https://mail.yourcompany.com:2080', group: 'caldav' },
+      { name: 'user', label: 'Email / username', value: c.user || '', placeholder: 'you@yourcompany.com', group: 'caldav' },
       { name: 'password', label: hasPw ? 'Password (leave empty to keep)' : 'Email password', type: 'password', group: 'caldav', hint: 'Stored only on this computer — never synced.' },
     ],
     extraButton: c.id && type === 'caldav' && isApp() ? { label: 'Test connection', onClick: async () => {
@@ -1119,7 +1180,7 @@ async function calendarForm(c = {}) {
         if (!v.user) throw new Error('Enter your email');
         if (!v.password && !hasPw) throw new Error('Enter the email password');
         const server = v.server.trim().replace(/\/+$/, '');
-        const principal = /yourcompany\.com/i.test(server) ? `/principals/${v.user.trim()}` : (c.principal || '');
+        const principal = /:2080\b/.test(server) ? `/principals/${v.user.trim()}` : (c.principal || '');
         if (v.password) await kvSet('calsecret:' + id, v.password);
         await kvSet('caldav:cols:' + id, null); // rediscover
         // check the sign-in straight away so mistakes show now
@@ -1307,14 +1368,24 @@ function bindView(root) {
         const rows = parseCSV(await f.text());
         const header = rows[0].map((h) => h.trim().toLowerCase());
         const col = (n) => header.indexOf(n);
-        const existing = new Set(list('trips').map((t) => `${t.from}|${t.country}`));
-        let added = 0;
+        const pick = (...names) => names.map(col).find((i) => i >= 0) ?? -1;
+        const ci = { from: pick('from'), to: pick('to', 'till', 'until'), country: pick('country'), reason: pick('reason', 'purpose'), cities: pick('cities', 'cities visited') };
+        const key = (from, country) => `${from}|${countryName(country).toLowerCase()}`;
+        const existing = new Map(list('trips').map((t) => [key(t.from, t.country), t]));
+        let added = 0, updated = 0;
         for (const r of rows.slice(1)) {
-          const trip = { from: toISO(r[col('from')] || ''), to: toISO(r[col('to')] || ''), country: (r[col('country')] || '').trim(), cities: (r[col('cities')] || '').trim() };
-          if (!trip.from || !trip.country || existing.has(`${trip.from}|${trip.country}`)) continue;
+          const v = (k) => (ci[k] >= 0 ? (r[ci[k]] || '').trim() : '');
+          const trip = { from: toISO(v('from')), to: toISO(v('to')), country: v('country'), reason: v('reason'), cities: v('cities') };
+          if (!trip.from || !trip.country) continue;
+          const old = existing.get(key(trip.from, trip.country));
+          if (old) { // already there: fill in what's missing (e.g. the reason) without duplicating the trip
+            const patch = { reason: old.reason || trip.reason, cities: old.cities || trip.cities, to: old.to || trip.to };
+            if (patch.reason !== old.reason || patch.cities !== old.cities || patch.to !== old.to) { await upsert('trips', { ...old, ...patch }); updated++; }
+            continue;
+          }
           await upsert('trips', trip); added++;
         }
-        return toast(`Imported ${added} trips`, 'ok');
+        return toast(`Imported ${added} new trip${added === 1 ? '' : 's'}${updated ? ` · updated ${updated}` : ''}`, 'ok');
       }
     } catch (err) { toast(errText(err), 'error'); }
   };
@@ -1342,6 +1413,7 @@ function bindView(root) {
         await Sync.connect({ ...v, create: mode === 'create' });
         toast('Sync is on — this device is now connected', 'ok'); await loadCaches(); loadAvatar(); doRender(false, true);
       } else if (kind === 'appearance') {
+        await setSetting('displayName', (v.displayName || '').trim()); applyName(); Sync.soon?.(1500);
         await setTheme(v.theme); toast('Saved', 'ok');
       } else if (kind === 'calendar') {
         await setSetting('calendarLinks', v.calendarLinks.trim()); toast('Saved — loading calendar…', 'ok'); await refresh('calendar', true);
@@ -1634,7 +1706,7 @@ async function start() {
     for (const [i, s] of DEFAULT_SEASONS.entries()) if (!list('seasons').some((x) => x.name === s.name)) await upsert('seasons', { id: 'ow-default-' + i, ...s });
     await setSetting('owSeasonsSeeded', true);
   }
-  applyTheme(); loadAvatar(); loadOwIcon();
+  applyTheme(); loadAvatar(); loadOwIcon(); applyName();
   migrateDocImages().catch((e) => console.warn(e));
   $('#avatar').onclick = pickAvatar;
   $('#themeToggle').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');

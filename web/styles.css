@@ -1122,7 +1122,7 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-even
 /* Window hidden or in the tray: pause every animation */
 .idle *, .idle *::before, .idle *::after { animation-play-state: paused !important; }
 
-/* =================== Light on the graphics card (chosen by Me) =================== */
+/* =================== Light on the graphics card  =================== */
 /* No soft shadows */
 .card, .cube-bar, .btn, .btn.primary, .cube-timer, .avatar-btn, .layout-bar, .hero .world li, .chip-ev, .cal-cell, #nav a.active, .tabs, #tabs { box-shadow: none !important; }
 #nav a.active { box-shadow: inset 0 0 0 1px var(--frame-hover) !important; }
@@ -1147,3 +1147,47 @@ body { background: var(--bg) !important; }
 /* Meetings you added yourself can be tapped to edit */
 [data-edit-meeting] { cursor: pointer; }
 .events li.manual:hover b, .events .what[data-edit-meeting]:hover b { color: var(--accent); }
+/* Flights page */
+.fl-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 18px; }
+.fl-grid > .card { margin: 0 !important; }
+@media (max-width: 1100px) { .fl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .fl-grid { grid-template-columns: 1fr; } }
+.fl-log { margin-top: 18px; }
+.fl-year { border-top: 1px solid var(--line-soft); }
+.fl-year:first-of-type { border-top: 0; }
+.fl-year summary { cursor: pointer; list-style: none; display: flex; align-items: baseline; gap: 12px; padding: 13px 2px; font-weight: 700; font-size: 17px; user-select: none; }
+.fl-year summary::-webkit-details-marker { display: none; }
+.fl-year summary::before { content: '›'; color: var(--text-3); display: inline-block; transition: transform .2s var(--ease); }
+.fl-year[open] summary::before { transform: rotate(90deg); }
+.fl-year summary small { font-weight: 400; font-size: 12.5px; color: var(--text-3); }
+.table.flights { table-layout: fixed; margin-bottom: 12px; }
+.table.flights th:nth-child(1) { width: 78px; } .table.flights th:nth-child(2) { width: 84px; } .table.flights th:nth-child(6) { width: 78px; }
+.table.flights th:nth-child(3) { width: 26%; }
+.table.flights td { vertical-align: top; }
+.table.flights td.d, .table.flights td.num, .table.flights td.t { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text-2); }
+.longest small { display: block; color: var(--text-3); margin-top: 3px; }
+.icon-btn.add-round { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--chip-line); background: var(--field-bg); font-size: 20px; line-height: 1; color: var(--text); }
+.icon-btn.add-round:hover { border-color: var(--accent); color: var(--accent); }
+@media (max-width: 640px) {
+  .table.flights { table-layout: auto; }
+  .table.flights th:nth-child(4), .table.flights td:nth-child(4), .table.flights th:nth-child(5), .table.flights td:nth-child(5), .table.flights th:nth-child(2), .table.flights td:nth-child(2) { display: none; }
+}
+/* Trips table */
+.table.trips { table-layout: fixed; margin-bottom: 12px; }
+.table.trips th:nth-child(1) { width: 150px; } .table.trips th:nth-child(2) { width: 22%; } .table.trips th:nth-child(3) { width: 110px; } .table.trips th:nth-child(5) { width: 64px; text-align: right; }
+.table.trips td { vertical-align: top; }
+.table.trips td.d { white-space: nowrap; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.table.trips td.t { text-align: right; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.table.trips td.cities { color: var(--text-2); }
+.table.trips tr { cursor: pointer; }
+.pill.reason { display: inline-block; padding: 2px 9px; font-size: 11.5px; border-radius: 999px; border: 1px solid var(--chip-line); background: var(--chip-bg); color: var(--text-2); }
+.pill.r-leisure { color: #7c93ff; border-color: rgba(124,147,255,.35); background: rgba(124,147,255,.10); }
+.pill.r-studies { color: #2dd4bf; border-color: rgba(45,212,191,.35); background: rgba(45,212,191,.10); }
+.pill.r-home { color: #fbbf24; border-color: rgba(251,191,36,.35); background: rgba(251,191,36,.10); }
+.pill.r-umrah { color: #34d399; border-color: rgba(52,211,153,.35); background: rgba(52,211,153,.10); }
+.pill.r-transit { color: var(--text-3); }
+@media (max-width: 640px) {
+  .table.trips { table-layout: auto; }
+  .table.trips th:nth-child(4), .table.trips td:nth-child(4) { display: none; }
+  .table.trips th:nth-child(1) { width: auto; }
+}
