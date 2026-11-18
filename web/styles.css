@@ -1192,3 +1192,19 @@ body { background: var(--bg) !important; }
   .table.trips th:nth-child(1) { width: auto; }
 }
 .table.trips th:nth-child(1) { width: 200px; }
+/* Trips: tap a city, reason or country to see every trip to it */
+.table.trips .city-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.table.trips button.city { all: unset; cursor: pointer; padding: 2px 9px; font-size: 12px; border-radius: 999px; border: 1px solid var(--chip-line); background: var(--chip-bg); color: var(--text-2); transition: border-color .15s, color .15s; }
+.table.trips button.city:hover, .table.trips button.city.on { border-color: var(--accent); color: var(--accent); }
+.table.trips button.pill.reason { cursor: pointer; font: inherit; font-size: 11.5px; }
+.table.trips button.pill.reason:hover { filter: brightness(1.25); }
+.country-link { all: unset; cursor: pointer; font-weight: 600; color: var(--text); }
+.country-link:hover { color: var(--accent); }
+.rank li.pick { cursor: pointer; border-radius: 8px; margin: 0 -8px; padding-left: 8px; padding-right: 8px; transition: background .15s; }
+.rank li.pick:hover { background: var(--accent-soft); }
+.rank li.pick.on { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--frame-hover); }
+.trip-filter { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 10px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--frame-hover); background: var(--accent-soft); scroll-margin-top: 90px; }
+.trip-filter span { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-3); }
+.trip-filter b { font-size: 16px; }
+.trip-filter em { font-style: normal; color: var(--text-2); font-size: 13px; flex: 1; }
+.trip-filter .icon-btn { opacity: 1 !important; border: 1px solid var(--chip-line); border-radius: 8px; width: 28px; height: 28px; }

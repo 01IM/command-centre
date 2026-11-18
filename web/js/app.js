@@ -156,6 +156,7 @@ function countryName(c) {
   if (/^[A-Z]{2}$/.test(k)) { try { const n = new Intl.DisplayNames(['en'], { type: 'region' }).of(k); if (n && n !== k) return n; } catch { /* keep as typed */ } }
   return k;
 }
+const cityList = (s) => String(s || '').split(/\s*(?:,|;|\/|\band\b)\s*/i).map((c) => c.trim()).filter(Boolean).map((c) => CITY_ABBR[c] || CITY_ABBR[c.toUpperCase()] || c);
 const cityNames = (s) => String(s || '').split(/\s*[,/;]\s*/).filter(Boolean).map((c) => CITY_ABBR[c] || CITY_ABBR[c.toUpperCase()] || c).join(', ');
 const fmtSize = (b) => b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(0) + ' KB' : (b / 1048576).toFixed(1) + ' MB';
 const WORLD = [['London', 'Europe/London'], ['New York', 'America/New_York'], ['Karachi', 'Asia/Karachi']];
@@ -689,7 +690,10 @@ const VIEW_RENDER = {
     const fullCountry = countryName;
     const tabs = `<div class="seg tabs-seg"><button class="btn ${travelView.tab === 'trips' ? 'on' : 'ghost'}" data-travel-tab="trips">Trips</button><button class="btn ${travelView.tab === 'flights' ? 'on' : 'ghost'}" data-travel-tab="flights">Flights</button></div>`;
     if (travelView.tab === 'flights') return flightsView(tabs);
-    const trips = list('trips').filter((t) => t.from).sort((a, b) => b.from.localeCompare(a.from));
+    const allTrips = list('trips').filter((t) => t.from).sort((a, b) => b.from.localeCompare(a.from));
+    const f = travelView.filter;
+    const match = (t) => !f || (f.type === 'city' ? cityList(t.cities).some((c) => c.toLowerCase() === f.value.toLowerCase()) : f.type === 'reason' ? (t.reason || '').toLowerCase() === f.value.toLowerCase() : fullCountry(t.country) === f.value);
+    const trips = allTrips;
     const tripDays = (t) => Math.max(1, Math.round((D(t.to || t.from) - D(t.from)) / 86400000));
     const countries = new Map(), reasons = new Map(), byYear = new Map();
     for (const t of trips) {
@@ -701,10 +705,16 @@ const VIEW_RENDER = {
     const years = [...byYear.keys()].sort((a, b) => b.localeCompare(a));
     const thisYear = String(new Date().getFullYear());
     const openYear = travelView.tripYear ?? years[0];
-    const bars = (rows, max = 6) => { const top = rows.slice(0, max); const hi = top[0]?.[1] || 1; return `<ul class="rank">${top.map(([k, n]) => `<li><span>${esc(k)}</span><div class="bar"><i style="width:${(n / hi) * 100}%"></i></div><b>${n}</b></li>`).join('')}</ul>`; };
+    const bars = (rows, max = 6, type) => { const top = rows.slice(0, max); const hi = top[0]?.[1] || 1; return `<ul class="rank">${top.map(([k, n]) => `<li${type ? ` class="pick${f && f.type === type && f.value === k ? ' on' : ''}" data-trip-filter="${type}|${esc(k)}"` : ''}><span>${esc(k)}</span><div class="bar"><i style="width:${(n / hi) * 100}%"></i></div><b>${n}</b></li>`).join('')}</ul>`; };
+    const shown = allTrips.filter(match);
+    const cityCount = new Map();
+    for (const t of allTrips) for (const c of new Set(cityList(t.cities))) cityCount.set(c, (cityCount.get(c) || 0) + 1);
     const dm = (d) => D(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
     const range = (t) => !t.to || t.to === t.from ? fmtDate(t.from) : `${dm(t.from)}${t.to.slice(0, 4) !== t.from.slice(0, 4) ? ' ' + t.from.slice(0, 4) : ''} – ${fmtDate(t.to)}`;
-    const reasonPill = (r) => r ? `<span class="pill reason r-${esc(r.toLowerCase().replace(/[^a-z]/g, ''))}">${esc(r)}</span>` : '<span class="muted">—</span>';
+    const reasonPill = (r) => r ? `<button class="pill reason r-${esc(r.toLowerCase().replace(/[^a-z]/g, ''))}" data-trip-filter="reason|${esc(r)}" title="Show every ${esc(r)} trip">${esc(r)}</button>` : '<span class="muted">—</span>';
+    const cityChips = (t) => cityList(t.cities).map((c) => `<button class="city${f && f.type === 'city' && f.value.toLowerCase() === c.toLowerCase() ? ' on' : ''}" data-trip-filter="city|${esc(c)}" title="Show every trip to ${esc(c)}">${esc(c)}</button>`).join('');
+    const fDays = shown.reduce((s, t) => s + tripDays(t), 0);
+    const filterBar = f ? `<div class="trip-filter"><span>${f.type === 'city' ? 'City' : f.type === 'reason' ? 'Reason' : 'Country'}</span><b>${esc(f.value)}</b><em>${shown.length} trip${shown.length === 1 ? '' : 's'} · ${fDays} day${fDays === 1 ? '' : 's'}${shown.length ? ` · first ${fmtDate(shown[shown.length - 1].from)} · last ${fmtDate(shown[0].from)}` : ''}</em><button class="icon-btn sm" data-trip-filter="" title="Show all trips">✕</button></div>` : '';
     return `<div class="page-head"><h1>Travel history</h1><div class="actions">${tabs}<button class="btn ghost" data-import="trips">Import CSV</button><button class="btn primary" data-add="trip">+ Add trip</button></div></div>
       <div class="stat-row">
         <div class="stat"><strong>${trips.length}</strong><small>trips</small></div>
@@ -713,13 +723,14 @@ const VIEW_RENDER = {
         <div class="stat"><strong>${byYear.get(thisYear)?.length || 0}</strong><small>trips in ${thisYear}</small></div>
       </div>
       ${trips.length ? `<div class="fl-grid">
-        ${card('Countries', bars([...countries.entries()].sort((a, b) => b[1] - a[1])))}
-        ${card('Reasons', reasons.size ? bars([...reasons.entries()].sort((a, b) => b[1] - a[1])) : empty('Add a reason to your trips (Leisure, Studies, Home…) to see them here.'))}
-        ${card('Trips per year', bars(years.slice(0, 6).map((y) => [y, byYear.get(y).length])))}
+        ${card('Countries', bars([...countries.entries()].sort((a, b) => b[1] - a[1]), 6, 'country'))}
+        ${card('Top cities', bars([...cityCount.entries()].sort((a, b) => b[1] - a[1]), 6, 'city'))}
+        ${card('Reasons', reasons.size ? bars([...reasons.entries()].sort((a, b) => b[1] - a[1]), 6, 'reason') : empty('Add a reason to your trips (Leisure, Studies, Home…) to see them here.'))}
       </div>
       <section class="card fl-log"><header><h2>Trip log</h2></header>
+      ${filterBar}
       <table class="table trips"><thead><tr><th>Dates</th><th>Country</th><th>Reason</th><th>Cities</th><th>Days</th></tr></thead><tbody>
-      ${trips.map((t) => `<tr data-edit-trip="${t.id}"><td class="d">${range(t)}</td><td><b>${esc(fullCountry(t.country))}</b></td><td>${reasonPill(t.reason)}</td><td class="cities">${esc(cityNames(t.cities))}</td><td class="t">${tripDays(t)}</td></tr>`).join('')}
+      ${shown.map((t) => `<tr data-edit-trip="${t.id}"><td class="d">${range(t)}</td><td><button class="country-link" data-trip-filter="country|${esc(fullCountry(t.country))}" title="Show every trip to ${esc(fullCountry(t.country))}">${esc(fullCountry(t.country))}</button></td><td>${reasonPill(t.reason)}</td><td class="cities"><div class="city-chips">${cityChips(t)}</div></td><td class="t">${tripDays(t)}</td></tr>`).join('')}
       </tbody></table>
       </section>` : card('No trips yet', empty('Import your travel log (CSV with columns: from, to, country, reason, cities) or add trips one by one.'))}`;
   },
@@ -1253,6 +1264,14 @@ function bindView(root) {
     if (fileCard && !e.target.closest('button')) { if (e.detail === 2) return V.openFile(fileCard.dataset.file); return; }
     const bud = e.target.closest('[data-edit-budget]');
     if (bud && !e.target.closest('button')) return budgetForm(list('budget').find((x) => x.id === bud.dataset.editBudget));
+    const tf = e.target.closest('[data-trip-filter]');
+    if (tf) {
+      const [type, ...rest] = tf.dataset.tripFilter.split('|'); const value = rest.join('|');
+      travelView.filter = !type || (travelView.filter && travelView.filter.type === type && travelView.filter.value === value) ? null : { type, value };
+      await doRender(false, true);
+      if (travelView.filter) document.querySelector('.trip-filter')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
     const mt = e.target.closest('[data-edit-meeting]');
     if (mt && !e.target.closest('button')) return meetingForm(list('meetings').find((x) => x.id === mt.dataset.editMeeting));
     const t = e.target.closest('button, [data-edit-plan], [data-edit-doc], [data-edit-trip], [data-edit-season], [data-day]');
