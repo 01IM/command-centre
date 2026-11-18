@@ -703,7 +703,7 @@ const VIEW_RENDER = {
     const openYear = travelView.tripYear ?? years[0];
     const bars = (rows, max = 6) => { const top = rows.slice(0, max); const hi = top[0]?.[1] || 1; return `<ul class="rank">${top.map(([k, n]) => `<li><span>${esc(k)}</span><div class="bar"><i style="width:${(n / hi) * 100}%"></i></div><b>${n}</b></li>`).join('')}</ul>`; };
     const dm = (d) => D(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-    const range = (t) => !t.to || t.to === t.from ? dm(t.from) : `${dm(t.from)} – ${D(t.to).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', ...(t.to.slice(0, 4) !== t.from.slice(0, 4) ? { year: 'numeric' } : {}) })}`;
+    const range = (t) => !t.to || t.to === t.from ? fmtDate(t.from) : `${dm(t.from)}${t.to.slice(0, 4) !== t.from.slice(0, 4) ? ' ' + t.from.slice(0, 4) : ''} – ${fmtDate(t.to)}`;
     const reasonPill = (r) => r ? `<span class="pill reason r-${esc(r.toLowerCase().replace(/[^a-z]/g, ''))}">${esc(r)}</span>` : '<span class="muted">—</span>';
     return `<div class="page-head"><h1>Travel history</h1><div class="actions">${tabs}<button class="btn ghost" data-import="trips">Import CSV</button><button class="btn primary" data-add="trip">+ Add trip</button></div></div>
       <div class="stat-row">
@@ -718,10 +718,9 @@ const VIEW_RENDER = {
         ${card('Trips per year', bars(years.slice(0, 6).map((y) => [y, byYear.get(y).length])))}
       </div>
       <section class="card fl-log"><header><h2>Trip log</h2></header>
-      ${years.map((y) => { const ts = byYear.get(y); const d = ts.reduce((s, t) => s + tripDays(t), 0); return `<details class="fl-year" data-trip-year="${y}" ${y === openYear ? 'open' : ''}><summary>${y}<small>${ts.length} trip${ts.length > 1 ? 's' : ''} · ${d} day${d > 1 ? 's' : ''} away</small></summary>
-        <table class="table trips"><thead><tr><th>Dates</th><th>Country</th><th>Reason</th><th>Cities</th><th>Days</th></tr></thead><tbody>
-        ${ts.map((t) => `<tr data-edit-trip="${t.id}"><td class="d">${range(t)}</td><td><b>${esc(fullCountry(t.country))}</b></td><td>${reasonPill(t.reason)}</td><td class="cities">${esc(cityNames(t.cities))}</td><td class="t">${tripDays(t)}</td></tr>`).join('')}
-        </tbody></table></details>`; }).join('')}
+      <table class="table trips"><thead><tr><th>Dates</th><th>Country</th><th>Reason</th><th>Cities</th><th>Days</th></tr></thead><tbody>
+      ${trips.map((t) => `<tr data-edit-trip="${t.id}"><td class="d">${range(t)}</td><td><b>${esc(fullCountry(t.country))}</b></td><td>${reasonPill(t.reason)}</td><td class="cities">${esc(cityNames(t.cities))}</td><td class="t">${tripDays(t)}</td></tr>`).join('')}
+      </tbody></table>
       </section>` : card('No trips yet', empty('Import your travel log (CSV with columns: from, to, country, reason, cities) or add trips one by one.'))}`;
   },
 
