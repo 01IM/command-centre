@@ -7,6 +7,7 @@ import { isApp, openExternal, joinMeeting } from './net.js';
 import { wxIcon, moonInfo, moonSVG, clockFace, zoneTime } from './visuals.js';
 import { mountCube } from './cube.js';
 import { holidaysBetween, setHijriShifts, HOLIDAY_COLOR } from './holidays.js';
+import { mountTitlebar } from './titlebar.js';
 import { mountHome, homeLayout, orderWidgets } from './layout.js';
 import * as V from './vault.js';
 import * as Sync from './sync.js';
@@ -1725,6 +1726,7 @@ async function start() {
     await setSetting('owSeasonsSeeded', true);
   }
   applyTheme(); loadAvatar(); loadOwIcon(); applyName();
+  if (isApp()) mountTitlebar();
   migrateDocImages().catch((e) => console.warn(e));
   $('#avatar').onclick = pickAvatar;
   $('#themeToggle').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');

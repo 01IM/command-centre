@@ -20,7 +20,9 @@
         "visible": false,
         "dragDropEnabled": false,
         "backgroundThrottling": "disabled",
-        "maximized": true
+        "maximized": true,
+        "decorations": false,
+        "shadow": true
       }
     ],
     "security": {
