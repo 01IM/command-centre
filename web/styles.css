@@ -1256,3 +1256,9 @@ body { background: var(--bg) !important; }
 .tb-close:hover .tb-c { background: #f43f5e; color: #fff; }
 .tb-btn:active .tb-c { filter: brightness(.9); }
 .tb-btn:focus-visible .tb-c { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Window buttons: a tab hanging from the top-right corner, three evenly spaced circles */
+.tb-win { align-self: flex-start; height: 40px; padding: 0 4px 0 8px; margin: 0; }
+.tb-win::before { left: 0; right: 0; top: 0; height: 40px; border-radius: 0 0 0 20px; border-top: 0; border-right: 0; }
+.tb-btn, .tb-btn:first-child, .tb-btn.tb-close { width: 34px; height: 40px; padding: 0; }
+.tb-win { padding: 0 0 0 8px; }
+.tb-btn.tb-close { width: 38px; padding-right: 4px; box-sizing: border-box; }
