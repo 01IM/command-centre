@@ -795,7 +795,7 @@ body[data-device=phone] #cube { display: none; }
 /* =================== Home layout: masonry grid + edit mode =================== */
 .home-grid.masonry { grid-auto-rows: 8px; row-gap: 0; column-gap: 16px; align-items: start; grid-auto-flow: row dense; position: relative; }
 .home-grid.masonry > .card { margin: 0; position: relative; }
-.home-grid > .card.fixed-h { overflow: auto; scrollbar-width: thin; }
+.home-grid > .card.fixed-h { overflow: auto; }
 .hero-avatar { display: none; }
 
 .home-grid.editing > .card { cursor: grab; user-select: none; -webkit-user-select: none; outline: 1.5px dashed color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: -1.5px; animation: w-breathe 2.4s ease-in-out infinite; }
@@ -991,7 +991,7 @@ border-radius: 8px; background: color-mix(in srgb, var(--hue) 16%, transparent);
   .settings-grid > .card > form.stack, .settings-grid > .card > .cal-list, .settings-grid > .card > .seasons { flex: 1 1 auto; }
   .settings-grid > .card > form.stack { display: flex; flex-direction: column; }
   .settings-grid > .card > form.stack > .row:last-child, .settings-grid > .card > .row:last-of-type { margin-top: auto; }
-  .settings-grid > .card { overflow: auto; scrollbar-width: thin; }
+  .settings-grid > .card { overflow: auto; }
 }
 @media (min-width: 900px) and (max-width: 1250px) { .settings-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 /* Settings: three tidy columns; cards keep their natural height and each column's last card fills to a shared bottom edge */
@@ -1231,3 +1231,13 @@ body { background: var(--bg) !important; }
 .tb-close:hover { background: #f43f5e; color: #fff; }
 .tb-btn:active { filter: brightness(.9); }
 .tb-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* =================== Scrollbars: slim rounded pill, quiet until you use it =================== */
+/* (no scrollbar-width / scrollbar-color here: in Chromium they switch off the rounded styling below) */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--accent) 28%, transparent); border-radius: 999px; border: 3px solid transparent; background-clip: padding-box; min-height: 40px; }
+::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--accent) 55%, transparent); border-width: 2px; }
+::-webkit-scrollbar-thumb:active { background-color: var(--accent); border-width: 2px; }
+::-webkit-scrollbar-button { display: none; height: 0; width: 0; }
+.has-titlebar ::-webkit-scrollbar-track:vertical { margin-top: 2px; }
