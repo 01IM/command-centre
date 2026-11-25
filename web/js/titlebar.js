@@ -21,10 +21,10 @@ export function mountTitlebar() {
   bar.innerHTML = `
     <span class="tb-pill tb-name" data-tauri-drag-region>${I.logo}<span data-tauri-drag-region>Command Centre</span></span>
     <span class="tb-pill tb-now" data-tauri-drag-region><i class="tb-dot"></i><span class="tb-time" data-tauri-drag-region></span><em class="tb-sync" data-tauri-drag-region></em></span>
-    <span class="tb-pill tb-win">
-      <button class="tb-btn tb-min" title="Minimise" aria-label="Minimise">${I.min}</button>
-      <button class="tb-btn tb-max" title="Maximise" aria-label="Maximise">${I.max}</button>
-      <button class="tb-btn tb-close" title="Close to tray" aria-label="Close">${I.close}</button>
+    <span class="tb-win">
+      <button class="tb-btn tb-min" title="Minimise" aria-label="Minimise"><span class="tb-c">${I.min}</span></button>
+      <button class="tb-btn tb-max" title="Maximise" aria-label="Maximise"><span class="tb-c">${I.max}</span></button>
+      <button class="tb-btn tb-close" title="Close to tray" aria-label="Close"><span class="tb-c">${I.close}</span></button>
     </span>`;
   document.body.prepend(bar);
   bar.querySelector('.tb-min').onclick = () => win.minimize();
@@ -32,7 +32,7 @@ export function mountTitlebar() {
   bar.querySelector('.tb-close').onclick = () => win.close(); // the app hides to the tray, as before
 
   const maxBtn = bar.querySelector('.tb-max');
-  const syncMax = async () => { const m = await win.isMaximized().catch(() => false); maxBtn.innerHTML = m ? I.restore : I.max; maxBtn.title = m ? 'Restore' : 'Maximise'; };
+  const syncMax = async () => { const m = await win.isMaximized().catch(() => false); maxBtn.firstElementChild.innerHTML = m ? I.restore : I.max; maxBtn.title = m ? 'Restore' : 'Maximise'; };
   win.onResized?.(() => syncMax()); syncMax();
 
   const timeEl = bar.querySelector('.tb-time'), syncEl = bar.querySelector('.tb-sync'), dot = bar.querySelector('.tb-dot');
